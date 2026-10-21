@@ -1,0 +1,312 @@
+"""Repositories API routes for ingestion, source reading, symbols, and graph queries."""
+
+from __future__ import annotations
+
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query, status
+
+from app.api.schemas import (
+    DependenciesResponse,
+    FileListResponse,
+    GraphResponse,
+    ImpactAnalysisResponse,
+    RepositoryDetail,
+    RepositoryListResponse,
+    RepositorySubmitRequest,
+    RepositorySubmitResponse,
+    RepositorySummary,
+    SourceFileResponse,
+    SymbolSearchResponse,
+)
+from app.services.repository_service import (
+    get_repository_code_graph,
+    get_repository_files,
+    get_symbol_dependencies,
+    get_symbol_impact_analysis,
+    read_repository_source_file,
+    search_repository_symbols,
+    submit_repository_for_indexing,
+)
+from app.storage.repository_store import get_repository, list_repositories
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/repositories", tags=["repositories"])
+
+
+@router.post(
+    "",
+    response_model=RepositorySubmitResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Submit a public GitHub repository for indexing",
+)
+def submit_repository(req: RepositorySubmitRequest) -> RepositorySubmitResponse:
+    """Validate, register, and queue a public GitHub repository for indexing."""
+    try:
+        repo_rec, job_rec = submit_repository_for_indexing(
+            url=req.url,
+            branch=req.branch,
+        )
+        return RepositorySubmitResponse(
+            repository_id=repo_rec.id,
+            job_id=job_rec.id,
+            status=job_rec.status,
+            message="Repository indexing has been queued.",
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
+    except Exception as err:
+        logger.exception("Failed to submit repository: %s", err)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error queueing repository indexing",
+        ) from err
+
+
+@router.get(
+    "",
+    response_model=RepositoryListResponse,
+    summary="List indexed repositories",
+)
+def get_repositories(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> RepositoryListResponse:
+    """Retrieve paginated list of all indexed repositories."""
+    repos = list_repositories(limit=limit, offset=offset)
+    items = [RepositorySummary(**r.to_dict()) for r in repos]
+    return RepositoryListResponse(
+        items=items,
+        total=len(items),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/{repository_id}",
+    response_model=RepositoryDetail,
+    summary="Get repository details",
+)
+def get_repository_detail(repository_id: str) -> RepositoryDetail:
+    """Retrieve metadata, current status, and timestamps for a repository."""
+    repo = get_repository(repository_id)
+    if not repo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Repository '{repository_id}' not found",
+        )
+    return RepositoryDetail(**repo.to_dict())
+
+
+@router.get(
+    "/{repository_id}/files",
+    response_model=FileListResponse,
+    summary="List files in an indexed repository",
+)
+def get_files(
+    repository_id: str,
+    language: Optional[str] = Query(default=None, description="Optional language filter"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> FileListResponse:
+    """Retrieve file inventory for a repository."""
+    try:
+        total, files = get_repository_files(
+            repo_id=repository_id,
+            language=language,
+            limit=limit,
+            offset=offset,
+        )
+        return FileListResponse(
+            repository_id=repository_id,
+            total_files=total,
+            files=files,
+        )
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+
+
+@router.get(
+    "/{repository_id}/file",
+    response_model=SourceFileResponse,
+    summary="Read a repository source file safely",
+)
+def get_source_file(
+    repository_id: str,
+    path: str = Query(..., description="Relative repository source path"),
+    start_line: Optional[int] = Query(default=None, ge=1),
+    end_line: Optional[int] = Query(default=None, ge=1),
+) -> SourceFileResponse:
+    """Read source content with optional line slicing and strict traversal protection."""
+    try:
+        data = read_repository_source_file(
+            repo_id=repository_id,
+            rel_path=path,
+            start_line=start_line,
+            end_line=end_line,
+        )
+        return SourceFileResponse(**data)
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except PermissionError as err:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        # Check if size limit exceeded
+        if "exceeds maximum" in str(err).lower():
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=str(err),
+            ) from err
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
+
+
+@router.get(
+    "/{repository_id}/graph",
+    response_model=GraphResponse,
+    summary="Retrieve repository code graph",
+)
+def get_graph(
+    repository_id: str,
+    node_type: Optional[str] = Query(default=None, description="Filter by node type"),
+    edge_type: Optional[str] = Query(default=None, description="Filter by edge type"),
+    limit: Optional[int] = Query(default=None, ge=1, description="Limit node count"),
+) -> GraphResponse:
+    """Retrieve complete code graph nodes and edges for an indexed repository."""
+    try:
+        graph = get_repository_code_graph(
+            repo_id=repository_id,
+            node_type=node_type,
+            edge_type=edge_type,
+            limit=limit,
+        )
+        return GraphResponse(**graph)
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(err),
+        ) from err
+
+
+@router.get(
+    "/{repository_id}/symbols",
+    response_model=SymbolSearchResponse,
+    summary="Search code symbols in repository",
+)
+def search_symbols(
+    repository_id: str,
+    q: str = Query(..., min_length=1, description="Symbol name search query"),
+    kind: Optional[str] = Query(default=None, description="Filter by symbol kind"),
+    language: Optional[str] = Query(default=None, description="Filter by language"),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> SymbolSearchResponse:
+    """Search extracted symbols across Python, JavaScript, and TypeScript."""
+    try:
+        symbols = search_repository_symbols(
+            repo_id=repository_id,
+            query=q,
+            kind=kind,
+            language=language,
+            limit=limit,
+        )
+        return SymbolSearchResponse(
+            repository_id=repository_id,
+            query=q,
+            total_matches=len(symbols),
+            symbols=symbols,
+        )
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+
+
+@router.get(
+    "/{repository_id}/dependencies",
+    response_model=DependenciesResponse,
+    summary="Query symbol dependencies or callers",
+)
+def get_dependencies(
+    repository_id: str,
+    symbol_id: str = Query(..., description="Target symbol ID"),
+    direction: str = Query(default="outgoing", description="'outgoing' or 'incoming'"),
+    depth: int = Query(default=1, ge=0, le=10, description="Traversal depth"),
+) -> DependenciesResponse:
+    """Query outgoing dependencies or incoming callers for a symbol."""
+    if direction not in ("outgoing", "incoming"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Direction must be either 'outgoing' or 'incoming'",
+        )
+
+    try:
+        data = get_symbol_dependencies(
+            repo_id=repository_id,
+            symbol_id=symbol_id,
+            direction=direction,
+            depth=depth,
+        )
+        return DependenciesResponse(**data)
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(err),
+        ) from err
+
+
+@router.get(
+    "/{repository_id}/impact",
+    response_model=ImpactAnalysisResponse,
+    summary="Perform change impact analysis for a symbol",
+)
+def get_impact(
+    repository_id: str,
+    symbol_id: str = Query(..., description="Target symbol ID to analyze"),
+    max_depth: int = Query(default=5, ge=0, le=20, description="Maximum reverse traversal depth"),
+) -> ImpactAnalysisResponse:
+    """Perform change impact analysis by traversing reverse dependency edges."""
+    try:
+        data = get_symbol_impact_analysis(
+            repo_id=repository_id,
+            symbol_id=symbol_id,
+            max_depth=max_depth,
+        )
+        return ImpactAnalysisResponse(**data)
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(err),
+        ) from err

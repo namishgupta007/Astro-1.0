@@ -1,0 +1,50 @@
+﻿# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing and linting
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+
+# SQLite databases and temporary database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Downloaded archives
+*.zip
+*.tar.gz
+
+# Local application data and backups
+data/
+backend/data/
+data_preservation_backup/
+backend/data_preservation_backup/
+
+# Generated output
+backend/output/
+
+# Operating system files
+Thumbs.db
+.DS_Store
