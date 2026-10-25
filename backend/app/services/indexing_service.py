@@ -67,6 +67,7 @@ class IndexingService:
         py_analysis_file = artifact_dir / "python_analysis.json"
         js_analysis_file = artifact_dir / "javascript_analysis.json"
         code_graph_file = artifact_dir / "code_graph.json"
+        graph_analytics_file = artifact_dir / "graph_analytics.json"
 
         temp_zip_file: Optional[Path] = None
 
@@ -93,9 +94,25 @@ class IndexingService:
             # Stage B: Extracting
             # ----------------------------------------------------
             update_job(job_id, stage="extracting", progress=25)
-            # Clear any preexisting source files
+            # Invalidate cached in-memory graphs
+            from app.services.repository_graph_cache import repository_graph_cache
+            repository_graph_cache.invalidate(repo_id)
+
+            # Clear any preexisting source files and stale artifacts
             shutil.rmtree(source_dir, ignore_errors=True)
             source_dir.mkdir(parents=True, exist_ok=True)
+
+            for stale_file in [
+                inventory_file,
+                py_analysis_file,
+                js_analysis_file,
+                code_graph_file,
+                graph_analytics_file,
+                artifact_dir / "cluster_summaries.json",
+                artifact_dir / "workflows.json",
+            ]:
+                if stale_file.exists():
+                    stale_file.unlink(missing_ok=True)
 
             extract_archive_safely(
                 zip_path=temp_zip_file,
@@ -140,12 +157,22 @@ class IndexingService:
             # Stage F: Building unified graph
             # ----------------------------------------------------
             update_job(job_id, stage="building_graph", progress=90)
-            build_graph(
+            graph_obj = build_graph(
                 repo_root=source_dir,
                 inventory_path=inventory_file,
                 analysis_path=[py_analysis_file, js_analysis_file],
                 output_path=code_graph_file,
             )
+
+            # ----------------------------------------------------
+            # Stage F.2: Computing graph analytics and intelligence
+            # ----------------------------------------------------
+            update_job(job_id, stage="analyzing_graph", progress=95)
+            from app.services.graph_analytics_service import graph_analytics_service
+
+            analytics_data = graph_analytics_service.compute_analytics(graph_obj, repository_id=repo_id)
+            with open(graph_analytics_file, "w", encoding="utf-8") as f:
+                json.dump(analytics_data, f, indent=2)
 
             # ----------------------------------------------------
             # Stage G: Validating and saving results
@@ -156,6 +183,7 @@ class IndexingService:
                 (py_analysis_file, "Python analysis"),
                 (js_analysis_file, "JavaScript analysis"),
                 (code_graph_file, "code graph"),
+                (graph_analytics_file, "graph analytics"),
             ]:
                 if not path.exists():
                     raise RuntimeError(f"Expected artifact '{name}' was not created at {path}")

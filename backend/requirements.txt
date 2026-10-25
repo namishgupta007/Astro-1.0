@@ -13,3 +13,10 @@ httpx>=0.27.0
 
 # Development and Testing:
 pytest>=7.0.0
+
+# Graph Analytics and Centrality Intelligence:
+networkx>=3.3
+
+# AI Agents, State Graphs, and Topology Reasoning:
+langchain-core>=0.3.0
+langgraph>=0.2.0

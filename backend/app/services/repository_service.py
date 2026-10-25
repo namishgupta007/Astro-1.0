@@ -252,7 +252,31 @@ def get_repository_code_graph(
     if edge_type:
         valid_edges = [e for e in valid_edges if e.get("type") == edge_type]
 
-    return {
+    # Attempt to attach analytics if artifact exists
+    analytics_summary = None
+    analytics_file = settings.get_repo_artifact_dir(repo_id) / "graph_analytics.json"
+    if analytics_file.exists():
+        try:
+            with open(analytics_file, "r", encoding="utf-8") as af:
+                analytics_data = json.load(af)
+            analytics_summary = analytics_data.get("summary")
+            node_metrics_map = {n["id"]: n for n in analytics_data.get("nodes", [])}
+            for n in nodes:
+                nid = n.get("id")
+                if nid in node_metrics_map:
+                    ninfo = node_metrics_map[nid]
+                    meta = n.setdefault("metadata", {})
+                    meta["cluster_id"] = ninfo.get("cluster_id", 0)
+                    m = ninfo.get("metrics", {})
+                    meta["centrality"] = m.get("normalized_centrality", 0.0)
+                    meta["pagerank"] = m.get("pagerank", 0.0)
+                    meta["in_degree"] = m.get("in_degree", 0)
+                    meta["out_degree"] = m.get("out_degree", 0)
+                    meta["degree_centrality"] = m.get("degree_centrality", 0.0)
+        except Exception as exc:
+            logger.warning("Could not attach analytics to code graph for %s: %s", repo_id, exc)
+
+    result = {
         "repository_id": repo_id,
         "schema_version": graph_data.get("schema_version", 1),
         "summary": graph_data.get("summary", {}),
@@ -260,6 +284,19 @@ def get_repository_code_graph(
         "edges": valid_edges,
         "unresolved_references": graph_data.get("unresolved_references", []),
     }
+    if analytics_summary is not None:
+        result["analytics"] = analytics_summary
+    return result
+
+
+def get_repository_analytics(
+    repo_id: str,
+    db_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Retrieve graph intelligence analytics report for an indexed repository."""
+    from app.services.graph_analytics_service import graph_analytics_service
+
+    return graph_analytics_service.get_repository_analytics(repo_id, db_path=db_path)
 
 
 def search_repository_symbols(

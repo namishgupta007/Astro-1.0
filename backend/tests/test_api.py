@@ -278,7 +278,11 @@ class TestFastAPIBackend(unittest.TestCase):
             job_id = res.json()["job_id"]
 
             # Wait briefly for in-process thread pool to execute pipeline
-            time.sleep(1.0)
+            for _ in range(30):
+                job_res = self.client.get(f"/api/jobs/{job_id}")
+                if job_res.status_code == 200 and job_res.json().get("status") in ("completed", "failed"):
+                    break
+                time.sleep(0.1)
 
             # Check job completion
             job_res = self.client.get(f"/api/jobs/{job_id}")
@@ -298,6 +302,7 @@ class TestFastAPIBackend(unittest.TestCase):
             self.assertTrue((artifact_dir / "python_analysis.json").exists())
             self.assertTrue((artifact_dir / "javascript_analysis.json").exists())
             self.assertTrue((artifact_dir / "code_graph.json").exists())
+            self.assertTrue((artifact_dir / "graph_analytics.json").exists())
 
     # 12. Pipeline failure cases recorded gracefully
     def test_12_pipeline_failure_handling(self) -> None:
