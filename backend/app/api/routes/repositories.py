@@ -19,8 +19,21 @@ from app.api.schemas import (
     RepositorySummary,
     SourceFileResponse,
     SymbolSearchResponse,
+    RepositoryAnalyticsResponse,
+    ChatRequest,
+    QAResponse,
+    ClusterSummarizeRequest,
+    ClusterSummarizeResponse,
+    RepositoryClustersResponse,
+    WorkflowListResponse,
+    WorkflowTraceRequest,
+    WorkflowTraceResponse,
 )
+from app.services.cluster_service import cluster_service
+from app.services.qa_service import qa_service
+from app.services.workflow_service import workflow_service
 from app.services.repository_service import (
+    get_repository_analytics,
     get_repository_code_graph,
     get_repository_files,
     get_symbol_dependencies,
@@ -198,6 +211,174 @@ def get_graph(
             limit=limit,
         )
         return GraphResponse(**graph)
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(err),
+        ) from err
+
+
+@router.get(
+    "/{repository_id}/analytics",
+    response_model=RepositoryAnalyticsResponse,
+    summary="Retrieve repository graph analytics and intelligence",
+)
+def get_analytics(repository_id: str) -> RepositoryAnalyticsResponse:
+    """Retrieve PageRank, degree centrality, community detection, and graph statistics."""
+    try:
+        data = get_repository_analytics(repository_id)
+        return RepositoryAnalyticsResponse(**data)
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(err),
+        ) from err
+
+
+@router.post(
+    "/{repository_id}/chat",
+    response_model=QAResponse,
+    summary="Semantic codebase Q&A grounded in repository graph",
+)
+async def chat_repository(
+    repository_id: str,
+    req: ChatRequest,
+) -> QAResponse:
+    """Answer natural language architectural questions grounded in the repository's code graph."""
+    try:
+        return await qa_service.answer_question(
+            repo_id=repository_id,
+            question=req.question,
+            history=req.history,
+        )
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(err),
+        ) from err
+
+
+@router.get(
+    "/{repository_id}/clusters",
+    response_model=RepositoryClustersResponse,
+    summary="Explore Louvain community clusters",
+)
+def get_clusters(
+    repository_id: str,
+    cluster_id: Optional[int] = Query(default=None, description="Optional target cluster ID"),
+) -> RepositoryClustersResponse:
+    """Retrieve detected galaxy community clusters and any existing architectural summaries."""
+    try:
+        return cluster_service.get_repository_clusters(
+            repo_id=repository_id,
+            target_cluster_id=cluster_id,
+        )
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(err),
+        ) from err
+
+
+@router.post(
+    "/{repository_id}/clusters/summarize",
+    response_model=ClusterSummarizeResponse,
+    summary="Synthesize AI architectural summaries for community clusters",
+)
+async def summarize_clusters(
+    repository_id: str,
+    req: ClusterSummarizeRequest,
+) -> ClusterSummarizeResponse:
+    """Generate high-level architectural summaries for galaxy clusters using Gemini or heuristics."""
+    try:
+        return await cluster_service.summarize_repository_clusters(
+            repo_id=repository_id,
+            cluster_id=req.cluster_id,
+            force_refresh=req.force_refresh,
+        )
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(err),
+        ) from err
+
+
+@router.get(
+    "/{repository_id}/workflows",
+    response_model=WorkflowListResponse,
+    summary="Retrieve detected execution workflows",
+)
+async def get_workflows(
+    repository_id: str,
+) -> WorkflowListResponse:
+    """Retrieve statically inferred execution workflows and call pathways."""
+    try:
+        workflows = workflow_service.get_repository_workflows(repository_id)
+        if not workflows.workflows:
+            trace_resp = await workflow_service.trace_repository_workflows(
+                repo_id=repository_id,
+                max_workflows=5,
+            )
+            return WorkflowListResponse(
+                repository_id=repository_id,
+                total_workflows=trace_resp.total_workflows,
+                workflows=trace_resp.workflows,
+            )
+        return workflows
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(err),
+        ) from err
+
+
+@router.post(
+    "/{repository_id}/workflows/trace",
+    response_model=WorkflowTraceResponse,
+    summary="Trace execution workflows across code graph",
+)
+async def trace_workflows(
+    repository_id: str,
+    req: WorkflowTraceRequest,
+) -> WorkflowTraceResponse:
+    """Discover entry points and trace static call and import pathways through the graph."""
+    try:
+        return await workflow_service.trace_repository_workflows(
+            repo_id=repository_id,
+            max_workflows=req.max_workflows,
+            entry_point_query=req.entry_point_query,
+            force_refresh=req.force_refresh,
+        )
     except FileNotFoundError as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

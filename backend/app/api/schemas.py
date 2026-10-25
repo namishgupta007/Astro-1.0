@@ -223,6 +223,67 @@ class GraphSummaryItem(BaseModel):
     unresolved_imports: int = 0
 
 
+class NodeCentralityMetrics(BaseModel):
+    """Computed centrality metrics for a single node."""
+
+    pagerank: float = 0.0
+    normalized_centrality: float = 0.0
+    in_degree: int = 0
+    out_degree: int = 0
+    degree_centrality: float = 0.0
+    in_degree_centrality: float = 0.0
+    out_degree_centrality: float = 0.0
+
+
+class TopCentralNodeItem(BaseModel):
+    """Representation of a highly central node for high-level frontend dashboards."""
+
+    id: str
+    label: str
+    type: str
+    path: str = ""
+    centrality: float = 0.0
+    pagerank: float = 0.0
+    cluster_id: int = 0
+    in_degree: int = 0
+    out_degree: int = 0
+
+
+class GraphAnalyticsSummary(BaseModel):
+    """Aggregate statistics and community counts from graph intelligence."""
+
+    node_count: int = 0
+    edge_count: int = 0
+    cluster_count: int = 0
+    density: float = 0.0
+    is_connected: bool = False
+    connected_components_count: int = 0
+    cluster_sizes: dict[str, int] = Field(default_factory=dict)
+    nodes_by_type: dict[str, int] = Field(default_factory=dict)
+    edges_by_type: dict[str, int] = Field(default_factory=dict)
+    top_central_nodes: list[TopCentralNodeItem] = Field(default_factory=list)
+
+
+class NodeAnalyticsItem(BaseModel):
+    """Node analytics record detailing community and centrality metrics."""
+
+    id: str
+    label: str
+    type: str
+    path: str = ""
+    cluster_id: int = 0
+    metrics: NodeCentralityMetrics = Field(default_factory=NodeCentralityMetrics)
+
+
+class RepositoryAnalyticsResponse(BaseModel):
+    """Full graph intelligence and community analysis response."""
+
+    repository_id: str
+    summary: GraphAnalyticsSummary
+    nodes: list[NodeAnalyticsItem] = Field(default_factory=list)
+    clusters: dict[str, list[str]] = Field(default_factory=dict)
+
+
 class GraphResponse(BaseModel):
     """Complete code graph data."""
 
@@ -232,6 +293,7 @@ class GraphResponse(BaseModel):
     nodes: list[GraphNodeItem]
     edges: list[GraphEdgeItem]
     unresolved_references: list[dict[str, Any]] = Field(default_factory=list)
+    analytics: Optional[GraphAnalyticsSummary] = None
 
 
 class DependenciesResponse(BaseModel):
@@ -262,3 +324,164 @@ class ErrorResponse(BaseModel):
 
     detail: str
     code: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Feature A: Codebase Q&A Schemas
+# ---------------------------------------------------------------------------
+
+class ChatRequest(BaseModel):
+    """Request model for codebase Q&A."""
+
+    question: str = Field(
+        ...,
+        min_length=1,
+        description="Natural language question about codebase architecture, components, or flows",
+        examples=["How does the indexing pipeline process multi-language repositories?"],
+    )
+    history: Optional[list[dict[str, str]]] = Field(
+        default=None,
+        description="Optional preceding conversation turns for contextual reasoning",
+    )
+
+
+class QAResponse(BaseModel):
+    """Structured Q&A answer paired with highlighted graph nodes for 3D camera flight."""
+
+    repository_id: str
+    question: str
+    answer: str
+    highlighted_node_ids: list[str] = Field(
+        default_factory=list,
+        description="Exact node IDs in the graph relevant to the answer",
+    )
+    relevant_files: list[str] = Field(
+        default_factory=list,
+        description="Relative source file paths referenced in the response",
+    )
+    relevant_symbols: list[str] = Field(
+        default_factory=list,
+        description="Symbol names or qualified identifiers relevant to the explanation",
+    )
+    generation_duration_ms: Optional[float] = None
+    model: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Feature B: Cluster Exploration and Summarization Schemas
+# ---------------------------------------------------------------------------
+
+class ClusterNodeDetail(BaseModel):
+    """Key node detail within a Louvain community cluster."""
+
+    id: str
+    label: str
+    type: str
+    path: str = ""
+    centrality: float = 0.0
+
+
+class ClusterDetailItem(BaseModel):
+    """Detailed profile of a detected community cluster."""
+
+    cluster_id: int
+    node_count: int
+    summary: Optional[str] = None
+    languages: list[str] = Field(default_factory=list)
+    primary_directories: list[str] = Field(default_factory=list)
+    top_nodes: list[ClusterNodeDetail] = Field(default_factory=list)
+    node_ids: list[str] = Field(default_factory=list)
+
+
+class RepositoryClustersResponse(BaseModel):
+    """List of detected Louvain community clusters and existing summaries."""
+
+    repository_id: str
+    total_clusters: int
+    clusters: list[ClusterDetailItem]
+
+
+class ClusterSummarizeRequest(BaseModel):
+    """Request to generate AI architectural summaries for galaxy clusters."""
+
+    cluster_id: Optional[int] = Field(
+        default=None,
+        description="Optional target cluster ID. If None, summarizes all clusters in the repository.",
+    )
+    force_refresh: bool = Field(
+        default=False,
+        description="When True, ignores cached summaries and calls the model fresh.",
+    )
+
+
+class ClusterSummarizeResponse(BaseModel):
+    """Response containing synthesized cluster summaries."""
+
+    repository_id: str
+    total_clusters: int
+    summaries: dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping from cluster ID (as string) to concise architectural summary",
+    )
+    generated_count: int = 0
+    cached_count: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Feature C: Workflow Detection and Tracing Schemas
+# ---------------------------------------------------------------------------
+
+class WorkflowItem(BaseModel):
+    """A named logical execution pathway through the codebase graph."""
+
+    id: str
+    name: str
+    description: str = ""
+    entry_point: str
+    ordered_node_ids: list[str] = Field(
+        default_factory=list,
+        description="Ordered sequence of node IDs representing the execution flow",
+    )
+    edge_ids: list[str] = Field(
+        default_factory=list,
+        description="Edge IDs traversed along the workflow path",
+    )
+    inferred: bool = Field(
+        default=True,
+        description="Indicates whether this workflow was statically inferred from the code graph",
+    )
+
+
+class WorkflowListResponse(BaseModel):
+    """List of detected workflows for a repository."""
+
+    repository_id: str
+    total_workflows: int
+    workflows: list[WorkflowItem]
+
+
+class WorkflowTraceRequest(BaseModel):
+    """Request to initiate static workflow tracing across the repository graph."""
+
+    max_workflows: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Maximum number of entry point workflows to discover and trace",
+    )
+    entry_point_query: Optional[str] = Field(
+        default=None,
+        description="Optional keyword to prioritize specific entry points (e.g. 'api', 'main', 'worker')",
+    )
+    force_refresh: bool = Field(
+        default=False,
+        description="When True, re-executes tracing even if cached workflows exist",
+    )
+
+
+class WorkflowTraceResponse(BaseModel):
+    """Result of workflow tracing."""
+
+    repository_id: str
+    total_workflows: int
+    workflows: list[WorkflowItem]

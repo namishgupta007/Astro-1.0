@@ -46,6 +46,10 @@ class Settings:
         self.host: str = os.environ.get("ASTRAL_HOST", "127.0.0.1")
         self.port: int = int(os.environ.get("ASTRAL_PORT", "8000"))
 
+        # AI and Gemini Configuration
+        self.gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
+        self.gemini_model: str = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+
     @property
     def db_path(self) -> Path:
         """Absolute path to the SQLite database file."""
