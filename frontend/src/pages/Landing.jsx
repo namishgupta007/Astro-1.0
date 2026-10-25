@@ -15,7 +15,7 @@ import {
   Shield,
   Layers,
 } from "lucide-react";
-import useAuth from "../hooks/useAuth.js";
+import useAuth, { friendlyError } from "../hooks/useAuth.js";
 import HeroGraph from "../components/Graph/HeroGraph.jsx";
 import SiteFooter from "../components/SiteFooter.jsx";
 
@@ -85,14 +85,21 @@ export default function Landing() {
 
     try {
       if (authMode === "signup") {
+        if (!password || password.length < 6) {
+          throw new Error("Password must be at least 6 characters.");
+        }
         if (signUp) await signUp(email.trim(), password);
       } else {
+        if (!password) {
+          throw new Error("Please enter your password.");
+        }
         if (signIn) await signIn(email.trim(), password);
       }
       navigate("/dashboard");
     } catch (err) {
-      // If firebase is in demo/offline mode, navigate smoothly to dashboard
-      navigate("/dashboard");
+      console.warn("Auth error:", err);
+      const msg = friendlyError ? friendlyError(err) : (err.message || "Authentication failed.");
+      setAuthError(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -416,6 +423,20 @@ export default function Landing() {
 
             {/* Inputs Form */}
             <form onSubmit={handleAuthSubmit} className="auth-form-fields">
+              {authError && (
+                <div style={{
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: '8px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  color: '#fca5a5',
+                  fontSize: '0.78rem',
+                  fontFamily: 'var(--font-mono, monospace)',
+                  lineHeight: '1.4'
+                }} role="alert">
+                  {authError}
+                </div>
+              )}
               <div className="auth-input-wrap">
                 <Mail size={16} className="auth-input-icon" />
                 <input

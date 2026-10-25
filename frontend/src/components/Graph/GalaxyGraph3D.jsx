@@ -4,9 +4,18 @@ import * as THREE from 'three';
 // Node styling based on AstralGraph NodeType enum
 const TYPE_COLORS = {
   directory: '#00e5ff', // cyan
-  file: '#e2e8f0',      // starlight white
+  file: '#38bdf8',      // starlight blue
   class: '#b388ff',     // violet
   function: '#ffd54f',  // amber gold
+};
+
+const CLUSTER_COLORS = {
+  0: '#f43f5e', // src/ - Rose / Pink neon
+  1: '#00e5ff', // services/ - Electric Cyan
+  2: '#fb923c', // SolarFluxEngine/ - Sunset Amber
+  3: '#10b981', // models/ - Emerald Green
+  4: '#a855f7', // api/ - Violet Purple
+  5: '#38bdf8', // utils/ - Sky Blue
 };
 
 // Create a crisp, large canvas-based text sprite for prominent labels
@@ -475,41 +484,96 @@ export default function GalaxyGraph3D({
     const nodes = graphData.nodes;
     const total = Math.max(nodes.length, 1);
 
-    // Perfectly balanced galaxy radius: fits comfortably in the viewport while giving each node its own bubble
+    // Constellation-based celestial placement with collision avoidance
+    const clusterBuckets = new Map();
+    nodes.forEach((node) => {
+      const cid = node.position_hint?.cluster_id ?? 0;
+      if (!clusterBuckets.has(cid)) clusterBuckets.set(cid, []);
+      clusterBuckets.get(cid).push(node);
+    });
+
+    const uniqueClusters = Array.from(clusterBuckets.keys()).sort((a, b) => a - b);
+    const numClusters = Math.max(uniqueClusters.length, 1);
+
+    // Step 1: Position cluster constellation centers in a balanced 3D orbit
+    const clusterCenters = new Map();
+    uniqueClusters.forEach((cid, cIdx) => {
+      const cAngle = (cIdx / numClusters) * Math.PI * 2;
+      const cRadius = numClusters === 1 ? 0 : 74;
+      const cElevation = (cIdx % 2 === 0 ? 1 : -1) * 12;
+      clusterCenters.set(cid, new THREE.Vector3(
+        Math.cos(cAngle) * cRadius,
+        cElevation,
+        Math.sin(cAngle) * cRadius
+      ));
+    });
+
+    // Step 2: Position individual nodes in planetary orbits around their cluster center
+    uniqueClusters.forEach((cid) => {
+      const cCenter = clusterCenters.get(cid);
+      const cNodes = clusterBuckets.get(cid) || [];
+      const cTotal = Math.max(cNodes.length, 1);
+
+      cNodes.forEach((node, j) => {
+        const nAngle = (j / cTotal) * Math.PI * 2;
+        const nRadius = cTotal === 1 ? 0 : (20 + (j % 2) * 8);
+        const nHeight = (j % 2 === 0 ? 1 : -1) * (6 + (j % 3) * 4);
+
+        const pos = new THREE.Vector3(
+          cCenter.x + Math.cos(nAngle) * nRadius,
+          cCenter.y + nHeight,
+          cCenter.z + Math.sin(nAngle) * nRadius
+        );
+        nodeCoords.set(node.id, pos);
+      });
+    });
+
+    // Step 3: Relaxation pass ensuring NO two spheres ever collide
+    const minDistance = 22;
+    for (let pass = 0; pass < 12; pass++) {
+      nodes.forEach((n1) => {
+        const p1 = nodeCoords.get(n1.id);
+        if (!p1) return;
+        nodes.forEach((n2) => {
+          if (n1.id === n2.id) return;
+          const p2 = nodeCoords.get(n2.id);
+          if (!p2) return;
+          const dist = p1.distanceTo(p2);
+          if (dist < minDistance && dist > 0.001) {
+            const diff = new THREE.Vector3().subVectors(p1, p2).normalize();
+            const push = (minDistance - dist) * 0.5;
+            p1.addScaledVector(diff, push);
+            p2.addScaledVector(diff, -push);
+          }
+        });
+      });
+    }
+
+    // Step 4: Render spheres and labels with distinct glowing celestial colors
     nodes.forEach((node, i) => {
+      const pos = nodeCoords.get(node.id);
       const cluster = node.position_hint?.cluster_id ?? 0;
-      const depth = node.position_hint?.depth ?? 0;
-
-      // Distribute evenly along the circumference with cluster sectoring
-      const angle = (i / total) * Math.PI * 2 + cluster * 0.55;
-      
-      // Radius scaled around 44-58 for optimal spacing on 1080p/laptop screens
-      const radius = 44 + depth * 7 + ((i % 3) - 1) * 6;
-      
-      // Alternating vertical separation (+/- 9) so neighboring nodes and labels never collide
-      const height = (i % 2 === 0 ? 1 : -1) * (7 + (i % 3) * 3);
-
-      const pos = new THREE.Vector3(
-        Math.cos(angle) * radius,
-        height,
-        Math.sin(angle) * radius
-      );
-      nodeCoords.set(node.id, pos);
 
       // Node sphere geometry
-      const size = Math.max(1.8, Math.min(3.8, 2.0 + (node.metrics?.centrality || 0) * 2.4));
-      const geom = new THREE.SphereGeometry(size, 20, 20);
+      const size = Math.max(2.0, Math.min(4.0, 2.2 + (node.metrics?.centrality || 0) * 2.5));
+      const geom = new THREE.SphereGeometry(size, 24, 24);
 
-      const colorHex = TYPE_COLORS[node.type] || '#ffffff';
+      // Distinct vibrant color: Function (gold), Class (violet), Directory (cyan), or Cluster Constellation Color
+      const baseColor =
+        (node.type === 'class' || node.type === 'function' || node.type === 'directory')
+          ? (TYPE_COLORS[node.type] || '#00e5ff')
+          : (CLUSTER_COLORS[cluster] || '#38bdf8');
+      const colorHex = node.color || baseColor;
+
       const isSelected = selectedNodeId === node.id;
       const isHighlighted = highlightedNodeIds.includes(node.id);
 
       const mat = new THREE.MeshStandardMaterial({
         color: isSelected ? 0xff0055 : (isHighlighted ? 0x00ff88 : colorHex),
         emissive: isSelected ? 0xff0055 : (isHighlighted ? 0x00ff88 : colorHex),
-        emissiveIntensity: isSelected || isHighlighted ? 1.0 : 0.45,
-        roughness: 0.25,
-        metalness: 0.8
+        emissiveIntensity: isSelected || isHighlighted ? 1.0 : 0.65,
+        roughness: 0.2,
+        metalness: 0.7
       });
 
       const mesh = new THREE.Mesh(geom, mat);
@@ -519,7 +583,7 @@ export default function GalaxyGraph3D({
       galaxyGroup.add(mesh);
       nodeMeshesRef.current.set(node.id, mesh);
 
-      // Label elevated above the node with alternating heights (+/- 3.5)
+      // Crisp label elevated above node with alternating height
       const sprite = makeTextSprite(node.label, {
         color: isSelected ? '#ff0055' : (isHighlighted ? '#00ff88' : colorHex)
       });

@@ -251,10 +251,16 @@ export default function Repositories() {
 
             {/* Repositories Controls & Filter Bar */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-2">
-              <div className="relative w-full sm:w-80">
+              <div style={{ position: 'relative', width: '100%', maxWidth: '320px', display: 'flex', alignItems: 'center' }}>
                 <Search
                   size={14}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+                  style={{
+                    position: 'absolute',
+                    left: '12px',
+                    color: '#9CA3AF',
+                    pointerEvents: 'none',
+                    zIndex: 2,
+                  }}
                 />
                 <input
                   type="text"
@@ -262,7 +268,7 @@ export default function Repositories() {
                   value={searchFilter}
                   onChange={(e) => setSearchFilter(e.target.value)}
                   className="dash-search-input"
-                  style={{ width: "100%" }}
+                  style={{ width: '100%', paddingLeft: '34px' }}
                 />
               </div>
 

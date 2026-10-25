@@ -342,14 +342,24 @@ export default function Dashboard() {
 
                 {repositories.length > 0 && (
                   <div className="repos-controls-row">
-                    <div className="relative flex items-center">
-                      <Search size={14} className="absolute left-3 text-[#9CA3AF]" />
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <Search
+                        size={14}
+                        style={{
+                          position: 'absolute',
+                          left: '12px',
+                          color: '#9CA3AF',
+                          pointerEvents: 'none',
+                          zIndex: 2,
+                        }}
+                      />
                       <input
                         type="text"
                         placeholder="Search repositories..."
                         value={searchFilter}
                         onChange={(e) => setSearchFilter(e.target.value)}
                         className="repo-search-input"
+                        style={{ paddingLeft: '34px' }}
                       />
                     </div>
 

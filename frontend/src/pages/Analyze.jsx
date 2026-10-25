@@ -19,7 +19,8 @@ import {
   Play,
   Copy,
   Check,
-  RefreshCw
+  RefreshCw,
+  Home
 } from 'lucide-react';
 import { submitRepositoryIndexing, getJobStreamUrl } from '../api/workspaceService.js';
 import useAuth from '../hooks/useAuth.js';
@@ -148,7 +149,7 @@ export default function Analyze() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Auto transition countdown
-  const [autoCountdown, setAutoCountdown] = useState(3);
+  const [autoCountdown, setAutoCountdown] = useState(5);
 
   // Live seconds ticker
   useEffect(() => {
@@ -518,10 +519,10 @@ export default function Analyze() {
         <button
           type="button"
           onClick={() => navigate('/dashboard')}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-mono text-gray-300 hover:text-white hover:border-[#FB923C]/50 transition"
-          title="Back to Dashboard"
+          className="analyze-dashboard-btn"
+          title="Return to Dashboard and Profile"
         >
-          <ArrowLeft size={13} />
+          <Home size={14} className="analyze-dashboard-icon" />
           <span>Dashboard</span>
         </button>
       </header>

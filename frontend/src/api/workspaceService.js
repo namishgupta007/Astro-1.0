@@ -1,184 +1,368 @@
 // Service layer for workspace, indexing, graph data, and AI interactions.
-// Supports both live backend (FastAPI /api/v1) and offline fallback mode with mock data.
+// Supports both live FastAPI backend and offline fallback mode with normalized mock dataset.
 
-const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+import { normalizeGraphData } from '../services/graphNormalizer.js';
 
-// Mock fallback graph representing cosmic-weather-api (matches backend demo_galaxy.json)
+const BASE = ((typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || 'http://localhost:8000').replace(/\/$/, '');
+
+// Canonical reference dataset representing cosmic-weather-api matching reference snapshot
 export const MOCK_GRAPH = {
   repo_url: "https://github.com/astral-demo/cosmic-weather-api",
   repo_name: "cosmic-weather-api",
   branch: "main",
-  commit_sha: "a1b2c3d4e5f6789012345678abcdef0123456789",
+  commit_sha: "7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b",
   generated_at: new Date().toISOString(),
+  is_demo: true,
   nodes: [
-    {
-      id: "dir::src",
-      label: "src",
-      type: "directory",
-      language: null,
-      path: "src",
-      metrics: { loc: 1450, centrality: 0.85, complexity: 12.0 },
-      position_hint: { cluster_id: 0, depth: 0 },
-      ai_summary: "Root source directory containing the main application modules and routing."
-    },
-    {
-      id: "dir::src/api",
-      label: "api",
-      type: "directory",
-      language: null,
-      path: "src/api",
-      metrics: { loc: 420, centrality: 0.65, complexity: 6.5 },
-      position_hint: { cluster_id: 1, depth: 1 },
-      ai_summary: "HTTP API layer with FastAPI routers, middleware, and request validation."
-    },
-    {
-      id: "dir::src/services",
-      label: "services",
-      type: "directory",
-      language: null,
-      path: "src/services",
-      metrics: { loc: 680, centrality: 0.78, complexity: 18.2 },
-      position_hint: { cluster_id: 2, depth: 1 },
-      ai_summary: "Core business logic, astronomical data calculations, and telemetry caching."
-    },
-    {
-      id: "dir::src/models",
-      label: "models",
-      type: "directory",
-      language: null,
-      path: "src/models",
-      metrics: { loc: 210, centrality: 0.42, complexity: 3.1 },
-      position_hint: { cluster_id: 3, depth: 1 },
-      ai_summary: "Pydantic domain models, database schemas, and serialization entities."
-    },
+    // ─── src/ (5 files) ──────────────────────────────────────────────────────────
     {
       id: "file::src/main.py",
       label: "main.py",
       type: "file",
       language: "python",
       path: "src/main.py",
-      metrics: { loc: 110, centrality: 0.92, complexity: 5.0 },
-      position_hint: { cluster_id: 1, depth: 1 },
-      ai_summary: "Entry point bootstrapping FastAPI server and registering event handlers."
+      metrics: { loc: 210, centrality: 0.72, complexity: 6 },
+      position_hint: { cluster_id: 0, depth: 1 },
+      ai_summary: "Main application bootstrapping FastAPI server, setting up global middleware, and registering router endpoints."
     },
     {
-      id: "func::src/main.py::create_app",
-      label: "create_app()",
-      type: "function",
-      language: "python",
-      path: "src/main.py",
-      metrics: { loc: 35, centrality: 0.88, complexity: 4.0 },
-      position_hint: { cluster_id: 1, depth: 2 },
-      ai_summary: "Application factory configuring CORS, routing, and lifecycle states."
-    },
-    {
-      id: "file::src/services/weather.py",
-      label: "weather.py",
-      type: "file",
-      language: "python",
-      path: "src/services/weather.py",
-      metrics: { loc: 320, centrality: 0.74, complexity: 14.0 },
-      position_hint: { cluster_id: 2, depth: 2 },
-      ai_summary: "Calculates solar wind speeds, geomagnetic storm indexes, and orbital friction."
-    },
-    {
-      id: "class::src/services/weather.py::SolarFluxEngine",
-      label: "SolarFluxEngine",
-      type: "class",
-      language: "python",
-      path: "src/services/weather.py",
-      metrics: { loc: 160, centrality: 0.68, complexity: 11.5 },
-      position_hint: { cluster_id: 2, depth: 3 },
-      ai_summary: "Engine computing ionospheric density profiles and flare forecasts."
-    },
-    {
-      id: "file::src/models/telemetry.py",
-      label: "telemetry.py",
-      type: "file",
-      language: "python",
-      path: "src/models/telemetry.py",
-      metrics: { loc: 140, centrality: 0.50, complexity: 2.5 },
-      position_hint: { cluster_id: 3, depth: 2 },
-      ai_summary: "Validation schemas for deep space satellite readings and time-series metrics."
-    },
-    {
-      id: "file::src/api/routes.py",
+      id: "file::src/routes.py",
       label: "routes.py",
       type: "file",
       language: "python",
-      path: "src/api/routes.py",
-      metrics: { loc: 180, centrality: 0.70, complexity: 6.0 },
-      position_hint: { cluster_id: 1, depth: 2 },
-      ai_summary: "Endpoints serving realtime cosmic telemetry and historical lookups."
+      path: "src/routes.py",
+      metrics: { loc: 180, centrality: 0.78, complexity: 8 },
+      position_hint: { cluster_id: 0, depth: 1 },
+      ai_summary: "HTTP API route definitions directing weather forecasting requests, satellite queries, and telemetry ingest."
+    },
+    {
+      id: "file::src/models.py",
+      label: "models.py",
+      type: "file",
+      language: "python",
+      path: "src/models.py",
+      metrics: { loc: 140, centrality: 0.65, complexity: 4 },
+      position_hint: { cluster_id: 0, depth: 1 },
+      ai_summary: "Top-level domain models, common data transfer schemas, and response validation envelopes."
+    },
+    {
+      id: "file::src/weather.py",
+      label: "weather.py",
+      type: "file",
+      language: "python",
+      path: "src/weather.py",
+      metrics: { loc: 320, centrality: 0.74, complexity: 14 },
+      position_hint: { cluster_id: 0, depth: 1 },
+      ai_summary: "Calculates solar wind speeds, geomagnetic storm indexes, and orbital atmospheric friction parameters."
+    },
+    {
+      id: "file::src/telemetry.py",
+      label: "telemetry.py",
+      type: "file",
+      language: "python",
+      path: "src/telemetry.py",
+      metrics: { loc: 1450, centrality: 0.85, complexity: 12 },
+      position_hint: { cluster_id: 0, depth: 1 },
+      ai_summary: "Handles telemetry data collection, processing and export. Acts as a bridge between the main application and weather data services. Depends on models for data structures and uses SolarFluxEngine for advanced calculations."
+    },
+
+    // ─── services/ (3 files) ─────────────────────────────────────────────────────
+    {
+      id: "file::services/data_fetcher.py",
+      label: "data_fetcher.py",
+      type: "file",
+      language: "python",
+      path: "services/data_fetcher.py",
+      metrics: { loc: 410, centrality: 0.62, complexity: 9 },
+      position_hint: { cluster_id: 1, depth: 1 },
+      ai_summary: "Asynchronously fetches space telemetry from NOAA SWPC and external satellite orbital sensors."
+    },
+    {
+      id: "file::services/processing.py",
+      label: "processing.py",
+      type: "file",
+      language: "python",
+      path: "services/processing.py",
+      metrics: { loc: 560, centrality: 0.82, complexity: 15 },
+      position_hint: { cluster_id: 1, depth: 1 },
+      ai_summary: "High-throughput stream processing pipeline transforming raw satellite telemetry into normalized physics arrays."
+    },
+    {
+      id: "file::services/api_client.py",
+      label: "api_client.py",
+      type: "file",
+      language: "python",
+      path: "services/api_client.py",
+      metrics: { loc: 230, centrality: 0.55, complexity: 5 },
+      position_hint: { cluster_id: 1, depth: 1 },
+      ai_summary: "Resilient HTTP client for upstream space agency data with exponential backoff and circuit-breaking."
+    },
+
+    // ─── SolarFluxEngine/ (4 files) ──────────────────────────────────────────────
+    {
+      id: "file::SolarFluxEngine/engine.py",
+      label: "engine.py",
+      type: "file",
+      language: "python",
+      path: "SolarFluxEngine/engine.py",
+      metrics: { loc: 890, centrality: 0.88, complexity: 19 },
+      position_hint: { cluster_id: 2, depth: 1 },
+      ai_summary: "Core computational physics engine orchestrating magnetosphere flux calculations, radiation modeling, and flare predictions."
+    },
+    {
+      id: "file::SolarFluxEngine/magnetosphere.py",
+      label: "magnetosphere.py",
+      type: "file",
+      language: "python",
+      path: "SolarFluxEngine/magnetosphere.py",
+      metrics: { loc: 480, centrality: 0.58, complexity: 11 },
+      position_hint: { cluster_id: 2, depth: 1 },
+      ai_summary: "Models geomagnetic boundary layers, bow shock compressions, and magnetic reconnection dynamics."
+    },
+    {
+      id: "file::SolarFluxEngine/solar.py",
+      label: "solar.py",
+      type: "file",
+      language: "python",
+      path: "SolarFluxEngine/solar.py",
+      metrics: { loc: 390, centrality: 0.61, complexity: 8 },
+      position_hint: { cluster_id: 2, depth: 1 },
+      ai_summary: "Calculates solar flare indices, coronal mass ejection trajectories, and UV/X-ray solar radiation bands."
+    },
+    {
+      id: "file::SolarFluxEngine/prediction.py",
+      label: "prediction.py",
+      type: "file",
+      language: "python",
+      path: "SolarFluxEngine/prediction.py",
+      metrics: { loc: 520, centrality: 0.70, complexity: 13 },
+      position_hint: { cluster_id: 2, depth: 1 },
+      ai_summary: "Predictive neural network forecasting geomagnetic storms, satellite drag coefficients, and radio blackout windows."
+    },
+
+    // ─── models/ (3 files) ───────────────────────────────────────────────────────
+    {
+      id: "file::models/base.py",
+      label: "base.py",
+      type: "file",
+      language: "python",
+      path: "models/base.py",
+      metrics: { loc: 160, centrality: 0.48, complexity: 3 },
+      position_hint: { cluster_id: 3, depth: 1 },
+      ai_summary: "Base Pydantic entity models with timestamp serialization mixins and geo-spatial coordinate validation."
+    },
+    {
+      id: "file::models/forecast.py",
+      label: "forecast.py",
+      type: "file",
+      language: "python",
+      path: "models/forecast.py",
+      metrics: { loc: 240, centrality: 0.52, complexity: 5 },
+      position_hint: { cluster_id: 3, depth: 1 },
+      ai_summary: "Data structures representing hourly and 7-day geomagnetic weather predictions and severity alert thresholds."
+    },
+    {
+      id: "file::models/solar.py",
+      label: "solar.py",
+      type: "file",
+      language: "python",
+      path: "models/solar.py",
+      metrics: { loc: 190, centrality: 0.50, complexity: 4 },
+      position_hint: { cluster_id: 3, depth: 1 },
+      ai_summary: "Entity schemas for sunspot counts, spectral irradiance measurements, and solar wind velocity vectors."
+    },
+
+    // ─── api/ (2 files) ──────────────────────────────────────────────────────────
+    {
+      id: "file::api/endpoints.py",
+      label: "endpoints.py",
+      type: "file",
+      language: "python",
+      path: "api/endpoints.py",
+      metrics: { loc: 290, centrality: 0.64, complexity: 7 },
+      position_hint: { cluster_id: 4, depth: 1 },
+      ai_summary: "REST endpoint controllers exposing current weather feeds, flare alerts, and historical geomagnetic lookups."
+    },
+    {
+      id: "file::api/schemas.py",
+      label: "schemas.py",
+      type: "file",
+      language: "python",
+      path: "api/schemas.py",
+      metrics: { loc: 210, centrality: 0.45, complexity: 3 },
+      position_hint: { cluster_id: 4, depth: 1 },
+      ai_summary: "Pydantic request and response schemas enforcing strict typing for HTTP clients and telemetry producers."
+    },
+
+    // ─── utils/ (2 files) ────────────────────────────────────────────────────────
+    {
+      id: "file::utils/helpers.py",
+      label: "helpers.py",
+      type: "file",
+      language: "python",
+      path: "utils/helpers.py",
+      metrics: { loc: 180, centrality: 0.54, complexity: 4 },
+      position_hint: { cluster_id: 5, depth: 1 },
+      ai_summary: "Astronomical coordinate conversion, unit transformations, timestamp formatting, and vector maths."
+    },
+    {
+      id: "file::utils/constants.py",
+      label: "constants.py",
+      type: "file",
+      language: "python",
+      path: "utils/constants.py",
+      metrics: { loc: 95, centrality: 0.40, complexity: 1 },
+      position_hint: { cluster_id: 5, depth: 1 },
+      ai_summary: "Astrophysical constants, Earth magnetic dipole moment, speed of light, and solar radius baselines."
     }
   ],
+
+  // ─── DIRECT FILE-TO-FILE DEPENDENCY EDGES ─────────────────────────────────
   edges: [
-    { id: "e1", source: "dir::src", target: "dir::src/api", relation: "contains", weight: 1.0 },
-    { id: "e2", source: "dir::src", target: "dir::src/services", relation: "contains", weight: 1.0 },
-    { id: "e3", source: "dir::src", target: "dir::src/models", relation: "contains", weight: 1.0 },
-    { id: "e4", source: "dir::src", target: "file::src/main.py", relation: "contains", weight: 1.0 },
-    { id: "e5", source: "file::src/main.py", target: "func::src/main.py::create_app", relation: "contains", weight: 1.0 },
-    { id: "e6", source: "file::src/main.py", target: "file::src/api/routes.py", relation: "imports", weight: 2.0 },
-    { id: "e7", source: "file::src/api/routes.py", target: "file::src/services/weather.py", relation: "calls", weight: 2.5 },
-    { id: "e8", source: "file::src/services/weather.py", target: "class::src/services/weather.py::SolarFluxEngine", relation: "contains", weight: 1.5 },
-    { id: "e9", source: "file::src/services/weather.py", target: "file::src/models/telemetry.py", relation: "imports", weight: 1.8 }
+    // Incoming to telemetry.py (3):
+    { id: "e_main_telemetry", source: "file::src/main.py", target: "file::src/telemetry.py", relation: "imports", weight: 2.0 },
+    { id: "e_routes_telemetry", source: "file::src/routes.py", target: "file::src/telemetry.py", relation: "imports", weight: 2.0 },
+    { id: "e_weather_telemetry", source: "file::src/weather.py", target: "file::src/telemetry.py", relation: "calls", weight: 2.5 },
+
+    // Outgoing from telemetry.py (4):
+    { id: "e_telemetry_fetcher", source: "file::src/telemetry.py", target: "file::services/data_fetcher.py", relation: "imports", weight: 2.2 },
+    { id: "e_telemetry_processing", source: "file::src/telemetry.py", target: "file::services/processing.py", relation: "calls", weight: 2.8 },
+    { id: "e_telemetry_engine", source: "file::src/telemetry.py", target: "file::SolarFluxEngine/engine.py", relation: "imports", weight: 3.0 },
+    { id: "e_telemetry_models", source: "file::src/telemetry.py", target: "file::src/models.py", relation: "imports", weight: 1.8 },
+
+    // Intra-src dependencies
+    { id: "e_main_routes", source: "file::src/main.py", target: "file::src/routes.py", relation: "imports", weight: 2.0 },
+    { id: "e_routes_weather", source: "file::src/routes.py", target: "file::src/weather.py", relation: "calls", weight: 2.4 },
+    { id: "e_routes_models", source: "file::src/routes.py", target: "file::src/models.py", relation: "imports", weight: 1.5 },
+    { id: "e_weather_models", source: "file::src/weather.py", target: "file::src/models.py", relation: "defines", weight: 1.9 },
+
+    // Cross-folder
+    { id: "e_routes_endpoints", source: "file::src/routes.py", target: "file::api/endpoints.py", relation: "imports", weight: 2.2 },
+    { id: "e_weather_base_models", source: "file::src/weather.py", target: "file::models/base.py", relation: "calls", weight: 2.0 },
+
+    // services module
+    { id: "e_fetcher_proc", source: "file::services/data_fetcher.py", target: "file::services/processing.py", relation: "calls", weight: 2.5 },
+    { id: "e_proc_apiclient", source: "file::services/processing.py", target: "file::services/api_client.py", relation: "calls", weight: 2.0 },
+    { id: "e_proc_endpoints", source: "file::services/processing.py", target: "file::api/endpoints.py", relation: "defines", weight: 2.3 },
+
+    // SolarFluxEngine
+    { id: "e_engine_proc", source: "file::SolarFluxEngine/engine.py", target: "file::services/processing.py", relation: "calls", weight: 2.7 },
+    { id: "e_engine_pred", source: "file::SolarFluxEngine/engine.py", target: "file::SolarFluxEngine/prediction.py", relation: "calls", weight: 2.4 },
+    { id: "e_engine_solar_model", source: "file::SolarFluxEngine/engine.py", target: "file::models/solar.py", relation: "calls", weight: 2.1 },
+    { id: "e_engine_helpers", source: "file::SolarFluxEngine/engine.py", target: "file::utils/helpers.py", relation: "calls", weight: 1.8 },
+    { id: "e_magneto_engine", source: "file::SolarFluxEngine/magnetosphere.py", target: "file::SolarFluxEngine/engine.py", relation: "imports", weight: 2.2 },
+    { id: "e_solar_engine", source: "file::SolarFluxEngine/solar.py", target: "file::SolarFluxEngine/engine.py", relation: "imports", weight: 2.2 },
+    { id: "e_pred_engine", source: "file::SolarFluxEngine/prediction.py", target: "file::SolarFluxEngine/engine.py", relation: "calls", weight: 2.0 },
+
+    // models
+    { id: "e_base_forecast", source: "file::models/base.py", target: "file::models/forecast.py", relation: "contains", weight: 1.6 },
+    { id: "e_forecast_solar", source: "file::models/forecast.py", target: "file::models/solar.py", relation: "contains", weight: 1.6 },
+
+    // api
+    { id: "e_endpoints_schemas", source: "file::api/endpoints.py", target: "file::api/schemas.py", relation: "calls", weight: 2.0 },
+
+    // utils
+    { id: "e_helpers_constants", source: "file::utils/helpers.py", target: "file::utils/constants.py", relation: "calls", weight: 1.5 },
   ],
+
   workflows: [
     {
       name: "Cosmic Telemetry Ingestion Flow",
       description: "Lifecycle of an incoming sensor reading from HTTP router through physics computation and storage.",
       nodes: [
-        "file::src/api/routes.py",
-        "file::src/services/weather.py",
-        "class::src/services/weather.py::SolarFluxEngine",
-        "file::src/models/telemetry.py"
+        "file::src/main.py",
+        "file::src/routes.py",
+        "file::src/telemetry.py",
+        "file::services/data_fetcher.py",
+        "file::services/processing.py",
+        "file::SolarFluxEngine/engine.py"
       ]
     }
   ]
 };
 
-// Fetch repository graph (3D galaxy schema)
+/**
+ * Fetch repository graph:
+ * - Checks live backend (/api/repositories/{id}/graph or /api/v1/...) with an 800ms timeout
+ * - If backend is offline or slow, falls back seamlessly to the rich normalized MOCK_GRAPH
+ * - Ensures Workspace NEVER gets stuck loading!
+ */
 export async function getRepositoryGraph(repoIdOrUrl) {
-  try {
-    const res = await fetch(`${BASE}/api/v1/repositories/${encodeURIComponent(repoIdOrUrl)}/graph`);
-    if (res.ok) {
-      return await res.json();
+  // If backend is running, try fetching live analysis with a 800ms network timeout
+  if (repoIdOrUrl && repoIdOrUrl !== 'cosmic-weather-api') {
+    const candidateUrls = [
+      `${BASE}/api/v1/repositories/${encodeURIComponent(repoIdOrUrl)}/graph`,
+      `${BASE}/api/repositories/${encodeURIComponent(repoIdOrUrl)}/graph`,
+    ];
+    for (const url of candidateUrls) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 800);
+        const res = await fetch(url, {
+          headers: { 'Accept': 'application/json' },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const liveData = await res.json();
+          if (liveData?.nodes?.length > 0) {
+            return normalizeGraphData({
+              ...liveData,
+              is_demo: false,
+            });
+          }
+        }
+      } catch {
+        // network error or timeout -> try next candidate or proceed to fallback
+      }
     }
-  } catch (err) {
-    // backend not running or error
   }
 
-  // Try demo endpoint
-  try {
-    const demoRes = await fetch(`${BASE}/api/v1/graph/demo`);
-    if (demoRes.ok) {
-      return await demoRes.json();
-    }
-  } catch (err) {
-    // ignore
+  // Reliable instant fallback: Canonical rich dataset matching reference snapshot
+  const normalized = normalizeGraphData(MOCK_GRAPH);
+  if (repoIdOrUrl && repoIdOrUrl !== 'cosmic-weather-api') {
+    // Keep custom repository name in UI header
+    normalized.repo_name = repoIdOrUrl.split('/').pop() || repoIdOrUrl;
+    normalized.repo_url = repoIdOrUrl;
   }
-
-  // Fallback to local mock data
-  return MOCK_GRAPH;
+  return normalized;
 }
 
-// Queue repository for indexing
+/**
+ * Read source file content (tries backend API, falls back to synthesized demo snippet)
+ */
+export async function getSourceFileContent(repoId, filePath) {
+  try {
+    const res = await fetch(`${BASE}/api/repositories/${encodeURIComponent(repoId)}/file?path=${encodeURIComponent(filePath)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.content || data.lines?.join('\n') || '';
+    }
+  } catch {
+    // offline fallback
+  }
+
+  // Fallback demo source snippets
+  return getMockSourceSnippet(filePath);
+}
+
+/**
+ * Queue repository for indexing via FastAPI backend
+ */
 export async function submitRepositoryIndexing(repoUrl, branch = "main", userId = null, userEmail = null) {
   try {
-    const res = await fetch(`${BASE}/api/v1/repositories`, {
+    const res = await fetch(`${BASE}/api/repositories`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        repo_url: repoUrl,
+        url: repoUrl,
         branch,
-        user_id: userId,
-        user_email: userEmail
       })
     });
     if (res.ok) {
       return await res.json();
     }
-  } catch (err) {
+  } catch {
     // ignore
   }
 
@@ -187,18 +371,20 @@ export async function submitRepositoryIndexing(repoUrl, branch = "main", userId 
     repository_id: "repo-mock-" + Date.now().toString(36),
     job_id: "job-mock-" + Date.now().toString(36),
     status: "indexing",
-    message: "Indexing initiated (Demo / Mock mode)"
+    message: "Indexing initiated (Demo Mode)"
   };
 }
 
-// Poll job status
+/**
+ * Poll job status
+ */
 export async function getJobStatus(jobId) {
   try {
-    const res = await fetch(`${BASE}/api/v1/jobs/${jobId}`);
+    const res = await fetch(`${BASE}/api/jobs/${jobId}`);
     if (res.ok) {
       return await res.json();
     }
-  } catch (err) {
+  } catch {
     // ignore
   }
 
@@ -210,87 +396,87 @@ export async function getJobStatus(jobId) {
   };
 }
 
-// Server-Sent Events stream URL for real-time progress events
+/**
+ * Server-Sent Events stream URL for real-time progress events
+ */
 export function getJobStreamUrl(jobId) {
-  return `${BASE}/api/v1/jobs/${encodeURIComponent(jobId)}/stream`;
+  return `${BASE}/api/jobs/${encodeURIComponent(jobId)}/stream`;
 }
 
-// Ask codebase AI question
+/**
+ * Ask codebase AI question
+ */
 export async function askCodebaseQuestion(question, repoId) {
   try {
-    const res = await fetch(`${BASE}/api/v1/chat`, {
+    const res = await fetch(`${BASE}/api/repositories/${encodeURIComponent(repoId)}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, repo_id: repoId })
+      body: JSON.stringify({ question })
     });
     if (res.ok) {
       return await res.json();
     }
-  } catch (err) {
-    // backend not reached -> fallback to mock responder
+  } catch {
+    // ignore
   }
 
-  const q = question.toLowerCase().trim();
-
-  // Keyword matchers for different modules and concepts
-  if (q.includes("weather") || q.includes("solar") || q.includes("flux") || q.includes("engine") || q.includes("physics") || q.includes("friction")) {
-    return {
-      answer: `Physics and atmospheric calculations are conducted in **\`src/services/weather.py\`** via the \`SolarFluxEngine\` class. It calculates real-time solar wind density, ionospheric atmospheric drag, and geomagnetic storm disturbance levels.`,
-      confidence: 0.95,
-      highlighted_node_ids: ["file::src/services/weather.py", "class::src/services/weather.py::SolarFluxEngine"]
-    };
-  }
-
-  if (q.includes("model") || q.includes("schema") || q.includes("data") || q.includes("telemetry") || q.includes("packet") || q.includes("database")) {
-    return {
-      answer: `Data structures and serialization schemas are defined in **\`src/models/telemetry.py\`**. It contains Pydantic models for incoming satellite readings, instrument metrics, and sensor status fields.`,
-      confidence: 0.93,
-      highlighted_node_ids: ["file::src/models/telemetry.py"]
-    };
-  }
-
-  if (q.includes("api") || q.includes("route") || q.includes("endpoint") || q.includes("http") || q.includes("url") || q.includes("request")) {
-    return {
-      answer: `HTTP routing is implemented in **\`src/api/routes.py\`**. It exposes endpoints for real-time telemetry streaming and historical orbital telemetry querying, delegating heavy logic to \`weather.py\`.`,
-      confidence: 0.96,
-      highlighted_node_ids: ["file::src/api/routes.py", "dir::src/api"]
-    };
-  }
-
-  if (q.includes("workflow") || q.includes("pipeline") || q.includes("flow") || q.includes("lifecycle") || q.includes("trace")) {
-    return {
-      answer: `The primary execution pipeline is the **Cosmic Telemetry Ingestion Flow**:\n1. Inbound sensor packet arrives at **\`src/api/routes.py\`**\n2. Routed into **\`src/services/weather.py\`**\n3. Computed by **\`SolarFluxEngine\`**\n4. Validated and persisted through schemas in **\`src/models/telemetry.py\`**.`,
-      confidence: 0.98,
-      highlighted_node_ids: [
-        "file::src/api/routes.py",
-        "file::src/services/weather.py",
-        "class::src/services/weather.py::SolarFluxEngine",
-        "file::src/models/telemetry.py"
-      ]
-    };
-  }
-
-  if (q.includes("dir") || q.includes("folder") || q.includes("structure") || q.includes("architecture") || q.includes("overview")) {
-    return {
-      answer: `The repository architecture consists of 3 primary modules under **\`src/\`**:\n- **\`api/\`**: REST controllers and routing endpoints.\n- **\`services/\`**: Core domain logic and the \`SolarFluxEngine\`.\n- **\`models/\`**: Telemetry and data schemas.`,
-      confidence: 0.92,
-      highlighted_node_ids: ["dir::src", "dir::src/api", "dir::src/services", "dir::src/models"]
-    };
-  }
-
-  if (q.includes("entry") || q.includes("start") || q.includes("main") || q.includes("bootstrap") || q.includes("run")) {
-    return {
-      answer: `The main entry point is **\`src/main.py\`**, which boots the application using the \`create_app()\` factory, configures middlewares, and mounts the API routes.`,
-      confidence: 0.95,
-      highlighted_node_ids: ["file::src/main.py", "func::src/main.py::create_app"]
-    };
-  }
-
-  // Adaptive response for general questions
+  // Fallback AI response
   return {
-    answer: `Regarding *"**${question}**"*: In this repository architecture, execution flows from the HTTP routes in **\`src/api/routes.py\`** into **\`src/services/weather.py\`** (\`SolarFluxEngine\`), validated against telemetry models in **\`src/models/telemetry.py\`**.`,
-    confidence: 0.88,
-    highlighted_node_ids: ["file::src/main.py", "file::src/api/routes.py", "file::src/services/weather.py"]
+    answer: `The cosmic telemetry pipeline ingests satellite readings via \`telemetry.py\`, passes raw fluxes to \`services/processing.py\`, and performs magnetosphere physics simulation in \`SolarFluxEngine/engine.py\`.`,
+    highlighted_node_ids: [
+      "file::src/telemetry.py",
+      "file::services/processing.py",
+      "file::SolarFluxEngine/engine.py"
+    ]
   };
 }
 
+function getMockSourceSnippet(filePath) {
+  if (filePath.includes('telemetry.py')) {
+    return `"""
+Telemetry Data Collection and Processing Module
+AstroGraph Cosmic Weather Pipeline
+"""
+
+from typing import Dict, List, Optional
+import asyncio
+from services.data_fetcher import SatelliteDataFetcher
+from services.processing import TelemetryStreamProcessor
+from SolarFluxEngine.engine import SolarFluxEngine
+from src.models import TelemetryRecord, MetricEnvelope
+
+class TelemetryBridge:
+    def __init__(self, engine: SolarFluxEngine):
+        self.engine = engine
+        self.fetcher = SatelliteDataFetcher()
+        self.processor = TelemetryStreamProcessor()
+        self.active_sensors: List[str] = []
+
+    async def ingest_live_telemetry(self, sensor_id: str) -> MetricEnvelope:
+        raw_stream = await self.fetcher.pull_stream(sensor_id)
+        normalized = await self.processor.transform_flux(raw_stream)
+        calculated_flux = self.engine.calculate_magnetosphere_impact(normalized)
+        return MetricEnvelope(sensor_id=sensor_id, flux=calculated_flux)
+
+    def export_metrics(self) -> Dict[str, float]:
+        return {
+            "centrality": 0.85,
+            "loc": 1450,
+            "complexity": 12,
+        }
+`;
+  }
+  return `"""
+Module: ${filePath}
+Generated for Astrograph Dependency Graph
+"""
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+def execute_pipeline():
+    logger.info("Pipeline processing active for ${filePath}")
+    return True
+`;
+}

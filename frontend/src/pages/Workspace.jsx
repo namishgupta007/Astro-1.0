@@ -12,9 +12,12 @@ import {
   Box,
   Terminal,
   ExternalLink,
-  Cpu
+  Cpu,
+  GitFork
 } from 'lucide-react';
 import GalaxyGraph3D from '../components/Graph/GalaxyGraph3D.jsx';
+import CytoscapeGalaxyGraph from '../components/Graph2D/CytoscapeGalaxyGraph.jsx';
+import NodeInspectorPanel from '../components/Graph2D/NodeInspectorPanel.jsx';
 import { getRepositoryGraph, askCodebaseQuestion } from '../api/workspaceService.js';
 import SiteFooter from '../components/SiteFooter.jsx';
 import '../styles/workspace.css';
@@ -24,13 +27,14 @@ export default function Workspace() {
   const [searchParams] = useSearchParams();
   const repoParam = searchParams.get('repo') || 'cosmic-weather-api';
 
-  // Navigation tab states
-  const [activeTab, setActiveTab] = useState('graph'); // 'overview' | 'explorer' | 'graph' | 'search' | 'ai' | 'status'
+  // Navigation tab states: 'graph2d' | 'graph' | 'explorer' | 'overview' | 'search' | 'ai' | 'status'
+  const [activeTab, setActiveTab] = useState('graph2d');
 
   // Data & graph states
   const [graphData, setGraphData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [selectedNodeId, setSelectedNodeId] = useState('file::src/telemetry.py');
+  const [selectedCluster, setSelectedCluster] = useState(null);
   const [highlightedNodeIds, setHighlightedNodeIds] = useState([]);
 
   // Search state
@@ -53,7 +57,8 @@ export default function Workspace() {
       const data = await getRepositoryGraph(repoParam);
       setGraphData(data);
       if (data?.nodes?.length > 0) {
-        setSelectedNodeId(data.nodes[0].id);
+        const telemetry = data.nodes.find((n) => n.id.includes('telemetry.py') || n.label === 'telemetry.py');
+        setSelectedNodeId(telemetry ? telemetry.id : data.nodes[0].id);
       }
       setLoading(false);
     }
@@ -103,7 +108,7 @@ export default function Workspace() {
         setHighlightedNodeIds(resp.highlighted_node_ids);
         setSelectedNodeId(resp.highlighted_node_ids[0]);
       }
-    } catch (err) {
+    } catch {
       setChatMessages((prev) => [
         ...prev,
         { sender: 'ai', text: "Encountered an issue analyzing the codebase query. Please try again." }
@@ -137,14 +142,30 @@ export default function Workspace() {
 
         <div className="workspace-header__right">
           <span className="workspace-status-pill workspace-status-pill--ready">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block animate-pulse mr-1" />
-            INDEXED READY
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                backgroundColor: graphData?.is_demo !== false ? '#fb923c' : '#38bdf8',
+                display: 'inline-block',
+                marginRight: 6
+              }}
+            />
+            {graphData?.is_demo !== false ? 'DEMO DATA • INDEXED' : 'INDEXED READY'}
           </span>
         </div>
       </header>
 
       {/* Tabs Bar */}
       <nav className="workspace-tabs">
+        <button
+          type="button"
+          className={`workspace-tab ${activeTab === 'graph2d' ? 'workspace-tab--active' : ''}`}
+          onClick={() => setActiveTab('graph2d')}
+        >
+          <GitFork size={15} /> Code Graph (2D)
+        </button>
         <button
           type="button"
           className={`workspace-tab ${activeTab === 'graph' ? 'workspace-tab--active' : ''}`}
@@ -191,11 +212,35 @@ export default function Workspace() {
 
       {/* Main Viewport */}
       <div className="workspace-viewport">
-        {/* Tab 1: 3D Code Graph */}
+        {/* Tab 1: 2D Code Graph (Cytoscape.js) */}
+        {activeTab === 'graph2d' && (
+          <div className="workspace-view workspace-view--graph">
+            {loading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>
+                INITIALIZING 2D DEPENDENCY TOPOLOGY...
+              </div>
+            ) : (
+              <CytoscapeGalaxyGraph
+                graphData={graphData}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={(id) => {
+                  setSelectedNodeId(id);
+                  setSelectedCluster(null);
+                }}
+                onSelectCluster={(cluster) => {
+                  setSelectedCluster(cluster);
+                  setSelectedNodeId(null);
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: 3D Code Graph */}
         {activeTab === 'graph' && (
           <div className="workspace-view workspace-view--graph">
             {loading ? (
-              <div className="flex items-center justify-center h-full text-cyan-400 font-mono">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#00e5ff', fontFamily: 'var(--font-mono)' }}>
                 INITIALIZING CELESTIAL MAPPING...
               </div>
             ) : (
@@ -203,36 +248,44 @@ export default function Workspace() {
                 graphData={graphData}
                 selectedNodeId={selectedNodeId}
                 highlightedNodeIds={highlightedNodeIds}
-                onSelectNode={(id) => setSelectedNodeId(id)}
+                onSelectNode={(id) => {
+                  setSelectedNodeId(id);
+                  setSelectedCluster(null);
+                }}
               />
             )}
           </div>
         )}
 
-        {/* Tab 2: File Explorer */}
+        {/* Tab 3: File Explorer */}
         {activeTab === 'explorer' && (
           <div className="workspace-view">
-            <h2 className="text-lg font-semibold mb-4 text-cyan-300">Repository Structure</h2>
+            <h2 className="text-lg font-semibold mb-4 text-cyan-300" style={{ color: '#67e8f9', marginBottom: '1rem' }}>
+              Repository Structure
+            </h2>
             <div className="explorer-tree">
               {filteredNodes.map((n) => (
                 <div
                   key={n.id}
                   className={`explorer-item ${selectedNodeId === n.id ? 'explorer-item--active' : ''}`}
-                  onClick={() => setSelectedNodeId(n.id)}
+                  onClick={() => {
+                    setSelectedNodeId(n.id);
+                    setSelectedCluster(null);
+                  }}
                 >
-                  {n.type === 'directory' ? <Box size={14} className="text-cyan-400" /> : <FileCode size={14} />}
+                  {n.type === 'directory' ? <Box size={14} style={{ color: '#00e5ff' }} /> : <FileCode size={14} />}
                   <span>{n.path}</span>
-                  <span className="text-xs text-gray-500 ml-auto">{n.type}</span>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: 'auto' }}>{n.type}</span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Tab 3: Overview */}
+        {/* Tab 4: Overview */}
         {activeTab === 'overview' && (
-          <div className="workspace-view max-w-4xl mx-auto space-y-8">
-            <div>
+          <div className="workspace-view" style={{ maxWidth: '900px', margin: '0 auto' }}>
+            <div style={{ marginBottom: '2rem' }}>
               <p className="kicker-glow">ARCHITECTURAL TELEMETRY</p>
               <h2 className="overview-hero-title">
                 Galaxy <em>Intelligence</em>
@@ -241,8 +294,7 @@ export default function Workspace() {
                 Structural mapping, Louvain community clusters, and execution graph insights.
               </p>
             </div>
-            
-            {/* Glowing Featured Cards matching image 2 */}
+
             <div className="overview-cards-grid">
               <div className="glow-feature-card glow-feature-card--orange">
                 <div className="glow-icon-wrap glow-icon-wrap--orange">
@@ -251,7 +303,7 @@ export default function Workspace() {
                 <div className="glow-card-metric">{graphData?.nodes?.length || 0}</div>
                 <h3 className="glow-card-title">Total Nodes</h3>
                 <p className="glow-card-desc">
-                  Indexed structural entities including directories, modules, classes, and callable functions.
+                  Indexed structural entities including source files, modules, and callable functions.
                 </p>
                 <div className="glow-card-footer">
                   <span>Architecture Nodes</span>
@@ -278,24 +330,24 @@ export default function Workspace() {
                 <div className="glow-icon-wrap glow-icon-wrap--dark">
                   <Cpu size={18} />
                 </div>
-                <div className="glow-card-metric">{graphData?.workflows?.length || 0}</div>
-                <h3 className="glow-card-title">Detected Workflows</h3>
+                <div className="glow-card-metric">{graphData?.clusters?.length || 6}</div>
+                <h3 className="glow-card-title">Directory Clusters</h3>
                 <p className="glow-card-desc">
-                  Algorithmic end-to-end execution paths traced from HTTP entrance to data persistence.
+                  Visual containment groups structuring child source files into module boundaries.
                 </p>
                 <div className="glow-card-footer">
-                  <span>Active Pathways</span>
+                  <span>Module Domains</span>
                   <span>→</span>
                 </div>
               </div>
             </div>
 
             {graphData?.workflows && graphData.workflows.length > 0 && (
-              <div className="workflow-section">
+              <div className="workflow-section" style={{ marginTop: '2.5rem' }}>
                 <h3 className="workflow-section-title">
                   <Terminal size={16} /> Execution Workflows
                 </h3>
-                <div className="space-y-3">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
                   {graphData.workflows.map((wf, idx) => (
                     <div key={idx} className="workflow-card">
                       <div className="workflow-card-head">
@@ -311,9 +363,9 @@ export default function Workspace() {
           </div>
         )}
 
-        {/* Tab 4: Search */}
+        {/* Tab 5: Search */}
         {activeTab === 'search' && (
-          <div className="workspace-view max-w-3xl mx-auto">
+          <div className="workspace-view" style={{ maxWidth: '800px', margin: '0 auto' }}>
             <div className="search-bar-wrap">
               <input
                 type="text"
@@ -329,19 +381,22 @@ export default function Workspace() {
                 <div
                   key={n.id}
                   className={`explorer-item ${selectedNodeId === n.id ? 'explorer-item--active' : ''}`}
-                  onClick={() => setSelectedNodeId(n.id)}
+                  onClick={() => {
+                    setSelectedNodeId(n.id);
+                    setSelectedCluster(null);
+                  }}
                 >
-                  <Search size={14} className="text-cyan-400" />
-                  <span className="font-semibold">{n.label}</span>
-                  <span className="text-xs text-gray-500 font-mono">({n.path})</span>
-                  <span className="text-xs text-gray-400 ml-auto">{n.type}</span>
+                  <Search size={14} style={{ color: '#00e5ff' }} />
+                  <span style={{ fontWeight: 600 }}>{n.label}</span>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontFamily: 'var(--font-mono)' }}>({n.path})</span>
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: 'auto' }}>{n.type}</span>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Tab 5: AI Assistant */}
+        {/* Tab 6: AI Assistant */}
         {activeTab === 'ai' && (
           <div className="workspace-view">
             <div className="chat-container">
@@ -351,19 +406,19 @@ export default function Workspace() {
                     key={i}
                     className={`chat-message ${msg.sender === 'user' ? 'chat-message--user' : 'chat-message--ai'}`}
                   >
-                    <div className="text-xs uppercase font-mono text-gray-400 mb-1">
+                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontFamily: 'var(--font-mono)', color: '#9ca3af', marginBottom: '0.25rem' }}>
                       {msg.sender === 'user' ? 'You' : 'Astral Agent'}
                     </div>
                     <div>{msg.text}</div>
                     {msg.highlights && (
-                      <div className="mt-2 text-xs font-mono text-cyan-300">
-                        ⚡ Highlighted {msg.highlights.length} nodes in 3D Galaxy
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: '#67e8f9' }}>
+                        ⚡ Highlighted {msg.highlights.length} nodes in Galaxy
                       </div>
                     )}
                   </div>
                 ))}
                 {isAsking && (
-                  <div className="chat-message chat-message--ai text-sm font-mono text-cyan-400 animate-pulse">
+                  <div className="chat-message chat-message--ai" style={{ fontSize: '0.85rem', fontFamily: 'var(--font-mono)', color: '#00e5ff' }}>
                     Traversing graph topology & synthesizing response...
                   </div>
                 )}
@@ -384,10 +439,10 @@ export default function Workspace() {
           </div>
         )}
 
-        {/* Tab 6: Indexing Status */}
+        {/* Tab 7: Indexing Status */}
         {activeTab === 'status' && (
-          <div className="workspace-view max-w-2xl mx-auto space-y-6">
-            <div>
+          <div className="workspace-view" style={{ maxWidth: '700px', margin: '0 auto' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
               <p className="kicker-glow">INDEXING ENGINE</p>
               <h2 className="overview-hero-title">
                 Telemetry <em>Pipeline</em>
@@ -396,7 +451,7 @@ export default function Workspace() {
 
             <div className="status-pipeline-box">
               <div className="status-pipeline-header">
-                <span className="font-semibold text-sm tracking-wide">Pipeline Execution</span>
+                <span style={{ fontWeight: 600, fontSize: '0.88rem', letterSpacing: '0.02em' }}>Pipeline Execution</span>
                 <span className="status-pipeline-badge">100% COMPLETE</span>
               </div>
               <div className="status-progress-track">
@@ -413,7 +468,7 @@ export default function Workspace() {
                 </div>
                 <div className="status-step-item">
                   <span className="status-check-icon">✓</span>
-                  <span>3D coordinates & celestial galaxy serialization completed</span>
+                  <span>3D celestial galaxy coordinates & 2D dependency topology computed</span>
                 </div>
                 <div className="status-step-item">
                   <span className="status-check-icon">✓</span>
@@ -424,66 +479,27 @@ export default function Workspace() {
           </div>
         )}
 
-        {/* Side Inspector Drawer (Consistent context across Explorer & Graph) */}
-        {selectedNode && (
-          <aside className="workspace-drawer">
-            <div className="inspector-badge-row">
-              <span className="kicker-glow">NODE INSPECTOR</span>
-              <span className="inspector-type-pill">{selectedNode.type}</span>
-            </div>
-
-            <div className="inspector-title-wrap">
-              <h3 className="inspector-node-title">{selectedNode.label}</h3>
-              <div className="inspector-path-pill">
-                <FileCode size={13} className="text-orange-400" />
-                <span className="inspector-path-text">{selectedNode.path}</span>
-              </div>
-            </div>
-
-            {selectedNode.ai_summary && (
-              <div className="inspector-summary-box">
-                <div className="inspector-summary-tag">
-                  <Bot size={13} />
-                  <span>AI ARCHITECTURAL BRIEF</span>
-                </div>
-                <p className="inspector-summary-text">
-                  {selectedNode.ai_summary}
-                </p>
-              </div>
-            )}
-
-            <div className="inspector-metrics-section">
-              <span className="kicker-glow">COMPUTED TELEMETRY</span>
-              <div className="inspector-metrics-grid">
-                <div className="inspector-metric-card">
-                  <span className="inspector-metric-label">LOC</span>
-                  <span className="inspector-metric-value">{selectedNode.metrics?.loc || 0}</span>
-                </div>
-                <div className="inspector-metric-card inspector-metric-card--highlight">
-                  <span className="inspector-metric-label">Centrality</span>
-                  <span className="inspector-metric-value inspector-metric-value--orange">
-                    {selectedNode.metrics?.centrality?.toFixed(2) || '0.00'}
-                  </span>
-                </div>
-                <div className="inspector-metric-card">
-                  <span className="inspector-metric-label">Complexity</span>
-                  <span className="inspector-metric-value inspector-metric-value--peach">
-                    {selectedNode.metrics?.complexity || 0}
-                  </span>
-                </div>
-                <div className="inspector-metric-card">
-                  <span className="inspector-metric-label">Cluster ID</span>
-                  <span className="inspector-metric-value">
-                    #{selectedNode.position_hint?.cluster_id ?? 0}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </aside>
+        {/* ─── SIDE INSPECTOR DRAWER ───────────────────────────────────────── */}
+        {(selectedNode || selectedCluster) && (
+          <NodeInspectorPanel
+            selectedNode={selectedNode}
+            selectedCluster={selectedCluster}
+            allNodes={graphData?.nodes || []}
+            allEdges={graphData?.edges || []}
+            repoName={graphData?.repo_name || repoParam}
+            onSelectNode={(id) => {
+              setSelectedNodeId(id);
+              setSelectedCluster(null);
+            }}
+            onClose={() => {
+              setSelectedNodeId(null);
+              setSelectedCluster(null);
+            }}
+          />
         )}
       </div>
 
-      {/* Shared Global Site Footer (Compact variant preserving graph viewport) */}
+      {/* Shared Global Site Footer */}
       <SiteFooter compact />
     </div>
   );
