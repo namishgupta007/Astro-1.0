@@ -28,6 +28,7 @@ import {
   Code2
 } from 'lucide-react';
 import { RingedPlanetLogo } from './Landing.jsx';
+import SiteFooter from '../components/SiteFooter.jsx';
 import '../styles/features.css';
 
 export default function Features() {
@@ -764,6 +765,8 @@ export default function Features() {
 
       </main>
 
+      {/* Shared Global Site Footer */}
+      <SiteFooter />
     </div>
   );
 }

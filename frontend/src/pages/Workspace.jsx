@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import GalaxyGraph3D from '../components/Graph/GalaxyGraph3D.jsx';
 import { getRepositoryGraph, askCodebaseQuestion } from '../api/workspaceService.js';
+import SiteFooter from '../components/SiteFooter.jsx';
 import '../styles/workspace.css';
 
 export default function Workspace() {
@@ -481,6 +482,9 @@ export default function Workspace() {
           </aside>
         )}
       </div>
+
+      {/* Shared Global Site Footer (Compact variant preserving graph viewport) */}
+      <SiteFooter compact />
     </div>
   );
 }

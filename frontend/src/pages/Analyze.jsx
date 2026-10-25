@@ -26,6 +26,7 @@ import useAuth from '../hooks/useAuth.js';
 import { saveUserSingleRepository } from '../api/userRepoService.js';
 import { RingedPlanetLogo } from './Landing.jsx';
 import PipelineGalaxyCanvas from '../components/Graph/PipelineGalaxyCanvas.jsx';
+import SiteFooter from '../components/SiteFooter.jsx';
 import '../styles/analyze.css';
 
 // 9 Canonical Astrograph Pipeline Stages
@@ -820,6 +821,9 @@ export default function Analyze() {
         </section>
 
       </main>
+
+      {/* Shared Global Site Footer */}
+      <SiteFooter />
     </div>
   );
 }

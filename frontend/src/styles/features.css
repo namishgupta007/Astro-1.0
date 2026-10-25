@@ -11,7 +11,8 @@
   color: #fff7ed;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   overflow-x: hidden;
-  padding-bottom: 7rem;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Atmospheric Background Glows */

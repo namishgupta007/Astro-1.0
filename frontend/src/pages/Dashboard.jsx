@@ -23,6 +23,7 @@ import useAuth from '../hooks/useAuth.js';
 import { parseGithubUrl } from '../utils/github.js';
 import { RingedPlanetLogo } from './Landing.jsx';
 import GalaxyBackground from '../components/GalaxyBackground.jsx';
+import SiteFooter from '../components/SiteFooter.jsx';
 import {
   getUserRepositoriesSync,
   loadUserRepositories,
@@ -571,8 +572,8 @@ export default function Dashboard() {
             </aside>
           </div>
 
-          {/* Bottom Feature Strip (3-column horizontal footer bar) */}
-          <footer className="dash-bottom-strip">
+          {/* Bottom Feature Strip (3-column horizontal feature bar) */}
+          <div className="dash-bottom-strip" role="region" aria-label="Feature Highlights">
             <div className="strip-item">
               <div className="strip-icon-circle">
                 <Share2 size={18} />
@@ -602,9 +603,12 @@ export default function Dashboard() {
                 <p className="strip-desc">Built for speed, clarity and productivity</p>
               </div>
             </div>
-          </footer>
+          </div>
 
         </main>
+
+        {/* Shared Global Site Footer */}
+        <SiteFooter />
       </div>
 
     </div>

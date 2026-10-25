@@ -27,6 +27,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { RingedPlanetLogo } from './Landing.jsx';
+import SiteFooter from '../components/SiteFooter.jsx';
 import '../styles/about.css';
 
 export default function About() {
@@ -617,6 +618,9 @@ export default function About() {
         </section>
 
       </main>
+
+      {/* Shared Global Site Footer */}
+      <SiteFooter />
     </div>
   );
 }

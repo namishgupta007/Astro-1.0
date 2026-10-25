@@ -1,0 +1,196 @@
+/* ==========================================================================
+   ASTROGRAPH - SHARED REUSABLE SITE FOOTER STYLES
+   Visual styling aligned with deep-space palette and warm amber highlights
+   ========================================================================== */
+
+.astro-site-footer {
+  width: 100%;
+  background: #02040a;
+  border-top: 1px solid rgba(251, 146, 60, 0.16);
+  color: #fff7ed;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  position: relative;
+  z-index: 20;
+  box-sizing: border-box;
+}
+
+.astro-site-footer__inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1.5rem clamp(1.25rem, 3.5vw, 3.5rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+/* Left Brand Identity: Logo + Brand Name + Tagline */
+.astro-site-footer__brand-block {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.astro-site-footer__brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+  color: #fff7ed;
+  transition: opacity 0.2s ease;
+}
+
+.astro-site-footer__brand-link:hover {
+  opacity: 0.88;
+}
+
+.astro-site-footer__logo {
+  height: 24px;
+  width: auto;
+  object-fit: contain;
+  user-select: none;
+  filter: drop-shadow(0 0 10px rgba(251, 146, 60, 0.35));
+}
+
+.astro-site-footer__brand-name {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #fff7ed;
+}
+
+.astro-site-footer__divider {
+  width: 1px;
+  height: 16px;
+  background-color: rgba(255, 247, 237, 0.12);
+}
+
+.astro-site-footer__tagline {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+/* Right Navigation Links & Copyright */
+.astro-site-footer__right-block {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.astro-site-footer__nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.astro-site-footer__nav-link {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #9ca3af;
+  text-decoration: none;
+  letter-spacing: 0.03em;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.astro-site-footer__nav-link:hover {
+  color: #fb923c;
+  transform: translateY(-1px);
+}
+
+.astro-site-footer__nav-link:focus-visible {
+  outline: 2px solid #fb923c;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.astro-site-footer__copyright {
+  font-size: 0.76rem;
+  color: #6b7280;
+  letter-spacing: 0.02em;
+}
+
+/* ==========================================================================
+   COMPACT VARIANT (For Workspace & Tooling Views)
+   Preserves graph canvas real-estate while maintaining visual identity
+   ========================================================================== */
+.astro-site-footer--compact {
+  border-top: 1px solid rgba(255, 247, 237, 0.08);
+  background: rgba(10, 15, 26, 0.96);
+  backdrop-filter: blur(12px);
+  flex-shrink: 0;
+}
+
+.astro-site-footer--compact .astro-site-footer__inner {
+  max-width: 100%;
+  padding: 0.55rem 1.5rem;
+  gap: 1rem;
+}
+
+.astro-site-footer--compact .astro-site-footer__logo {
+  height: 18px;
+}
+
+.astro-site-footer--compact .astro-site-footer__brand-name {
+  font-size: 0.76rem;
+  letter-spacing: 0.18em;
+}
+
+.astro-site-footer--compact .astro-site-footer__tagline {
+  font-size: 0.72rem;
+}
+
+.astro-site-footer--compact .astro-site-footer__nav-link {
+  font-size: 0.75rem;
+}
+
+.astro-site-footer--compact .astro-site-footer__copyright {
+  font-size: 0.72rem;
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN
+   ========================================================================== */
+@media (max-width: 900px) {
+  .astro-site-footer__inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .astro-site-footer__right-block {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 600px) {
+  .astro-site-footer__inner {
+    padding: 1.25rem 1rem;
+  }
+
+  .astro-site-footer__divider {
+    display: none;
+  }
+
+  .astro-site-footer__brand-block {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .astro-site-footer__right-block {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.85rem;
+  }
+
+  .astro-site-footer__nav {
+    gap: 1.1rem;
+  }
+}

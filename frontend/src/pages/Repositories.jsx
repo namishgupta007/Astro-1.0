@@ -18,6 +18,7 @@ import {
 import useAuth from "../hooks/useAuth.js";
 import { RingedPlanetLogo } from "./Landing.jsx";
 import GalaxyBackground from "../components/GalaxyBackground.jsx";
+import SiteFooter from "../components/SiteFooter.jsx";
 import {
   getUserRepositoriesSync,
   loadUserRepositories,
@@ -401,6 +402,9 @@ export default function Repositories() {
               </div>
             )}
           </main>
+
+          {/* Shared Global Site Footer */}
+          <SiteFooter />
         </div>
       </div>
     </div>

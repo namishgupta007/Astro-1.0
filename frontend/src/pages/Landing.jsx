@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import useAuth from "../hooks/useAuth.js";
 import HeroGraph from "../components/Graph/HeroGraph.jsx";
+import SiteFooter from "../components/SiteFooter.jsx";
 
 // Official Astrograph Team Ringed Planet Logo (Exact pixel match to the official artwork)
 export function RingedPlanetLogo({ className = "h-7 w-auto" }) {
@@ -108,12 +109,11 @@ export default function Landing() {
 
   return (
     <div className="landing-page">
-      {/* Dynamic Deep Space Atmospheric Backdrop */}
-      <div className="landing-backdrop">
-        <div className="planet-horizon" />
-        <div className="planet-horizon-secondary" />
-        <div className="orbital-ring" />
-        <div className="orbital-ring-faint" />
+      {/* Cinematic Deep Space Planetary Backdrop */}
+      <div className="landing-backdrop" aria-hidden="true">
+        <div className="landing-planet-image" />
+        <div className="landing-ambient-corona" />
+        <div className="landing-vignette-overlay" />
       </div>
 
       {/* Top Navigation Bar - Matching Reference Image */}
@@ -494,6 +494,9 @@ export default function Landing() {
           </section>
         </div>
       </main>
+
+      {/* Shared Global Site Footer */}
+      <SiteFooter />
     </div>
   );
 }
