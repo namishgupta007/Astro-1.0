@@ -39,6 +39,7 @@ class IndexingService:
         job_id: str,
         url: str,
         branch: str,
+        archive_path: Optional[Path] = None,
     ) -> None:
         """Schedule a background indexing task."""
         self.executor.submit(
@@ -47,6 +48,7 @@ class IndexingService:
             job_id,
             url,
             branch,
+            archive_path,
         )
 
     def _execute_indexing_pipeline(
@@ -55,6 +57,7 @@ class IndexingService:
         job_id: str,
         url: str,
         branch: str,
+        archive_path: Optional[Path] = None,
     ) -> None:
         """Run the complete multi-stage analysis pipeline."""
         source_dir = settings.get_repo_source_dir(repo_id)
@@ -77,18 +80,22 @@ class IndexingService:
             update_repository_status(repo_id, status="running")
 
             # ----------------------------------------------------
-            # Stage A: Downloading
+            # Stage A: Downloading / Archive Preparation
             # ----------------------------------------------------
-            update_job(job_id, stage="downloading", progress=10)
-            temp_fd, temp_zip_str = tempfile.mkstemp(suffix=".zip", prefix="astral_dl_")
-            os.close(temp_fd)
-            temp_zip_file = Path(temp_zip_str)
+            if archive_path and archive_path.exists():
+                temp_zip_file = archive_path
+                update_job(job_id, stage="extracting", progress=20)
+            else:
+                update_job(job_id, stage="downloading", progress=10)
+                temp_fd, temp_zip_str = tempfile.mkstemp(suffix=".zip", prefix="astral_dl_")
+                os.close(temp_fd)
+                temp_zip_file = Path(temp_zip_str)
 
-            download_github_archive(
-                url=url,
-                branch=branch,
-                dest_path=temp_zip_file,
-            )
+                download_github_archive(
+                    url=url,
+                    branch=branch,
+                    dest_path=temp_zip_file,
+                )
 
             # ----------------------------------------------------
             # Stage B: Extracting

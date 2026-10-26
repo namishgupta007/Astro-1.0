@@ -20,6 +20,8 @@ import {
   ExternalLink
 } from 'lucide-react';
 import useAuth from '../hooks/useAuth.js';
+import { uploadRepositoryZip } from '../api/workspaceService.js';
+import { UploadCloud, FileArchive } from 'lucide-react';
 import { parseGithubUrl } from '../utils/github.js';
 import { RingedPlanetLogo } from './Landing.jsx';
 import GalaxyBackground from '../components/GalaxyBackground.jsx';
@@ -67,6 +69,11 @@ export default function Dashboard() {
   const userPhoto = user?.photoURL;
 
   const [inputUrl, setInputUrl] = useState('');
+  const [submissionMode, setSubmissionMode] = useState('url'); // 'url' | 'zip'
+  const [zipFile, setZipFile] = useState(null);
+  const [zipProjectName, setZipProjectName] = useState('');
+  const [isUploadingZip, setIsUploadingZip] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
   const [filterType, setFilterType] = useState('All');
   const [activeNav, setActiveNav] = useState('Home');
@@ -114,41 +121,48 @@ export default function Dashboard() {
       ? `${parsed.owner}/${parsed.name}`
       : targetUrl.replace(/^https?:\/\/(www\.)?github\.com\//i, '').replace(/\/$/, '');
 
-    const now = new Date();
-    const dateFormatted = `${now.getDate()} ${now.toLocaleString('default', { month: 'short' })} ${now.getFullYear()}, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    const newRepoItem = {
-      id: `repo-${Date.now()}`,
-      name: repoFullName,
-      url: targetUrl,
-      type: 'Public',
-      desc: 'Interactive 3D codebase intelligence & AST dependency graph.',
-      tech: ['JavaScript', 'Python', 'Tree-sitter', 'NetworkX'],
-      nodes: '184 nodes',
-      edges: '392 edges',
-      status: 'done',
-      statusText: 'Analysis complete',
-      lastAnalysed: dateFormatted,
-      createdAtTimestamp: Date.now()
-    };
-
-    // Save strictly to user's isolated account in Database & local storage instantly
-    const updatedList = saveUserSingleRepository(user, newRepoItem);
-    setRepositories(updatedList);
-
-    // Immediate navigation to analysis screen
-    navigate(`/analyze?repo=${encodeURIComponent(targetUrl)}`);
+    // Navigate to analysis page directly to parse real AST and dependencies
+    // Do not save fake/hardcoded stats ahead of actual backend analysis
+    navigate(`/analyze?repo=${encodeURIComponent(targetUrl)}&name=${encodeURIComponent(repoFullName)}`);
   };
 
   const handleOpenWorkspace = (repo) => {
-    const target = repo?.url || (typeof repo === 'string' ? repo : (repositories[0]?.url || ''));
-    if (!target) {
-      // If no repos analyzed yet, prompt user with analysis focus
+    if (!repo) {
       const inputEl = document.getElementById('repo-url-input');
       if (inputEl) inputEl.focus();
       return;
     }
-    navigate(`/workspace?repo=${encodeURIComponent(target)}`);
+
+    const repoObj = typeof repo === 'string' ? { url: repo, name: repo } : repo;
+    const isAnalyzed = repoObj.status === 'done' && (repoObj.repository_id || (repoObj.id && repoObj.id.startsWith('repo_')));
+
+    if (isAnalyzed) {
+      const targetId = repoObj.repository_id || repoObj.id;
+      navigate(`/workspace?repo=${encodeURIComponent(targetId)}&name=${encodeURIComponent(repoObj.name || '')}&url=${encodeURIComponent(repoObj.url || '')}`);
+    } else {
+      // Re-trigger or continue analysis for pending/unindexed repositories
+      const targetUrl = repoObj.url || repoObj.id;
+      navigate(`/analyze?repo=${encodeURIComponent(targetUrl)}&name=${encodeURIComponent(repoObj.name || '')}`);
+    }
+  };
+
+  const handleStartZipAnalysis = async (e) => {
+    e?.preventDefault();
+    if (!zipFile) {
+      setUploadError('Please select a ZIP file to upload.');
+      return;
+    }
+    setIsUploadingZip(true);
+    setUploadError('');
+    try {
+      const projName = (zipProjectName.trim() || zipFile.name.replace(/\.zip$/i, '')).replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const submitRes = await uploadRepositoryZip(zipFile, 'main', projName);
+      navigate(`/analyze?repo_id=${encodeURIComponent(submitRes.repository_id)}&job_id=${encodeURIComponent(submitRes.job_id)}&name=${encodeURIComponent(projName)}`);
+    } catch (err) {
+      setUploadError(err.message || 'Failed to upload and queue ZIP archive');
+    } finally {
+      setIsUploadingZip(false);
+    }
   };
 
   const handleRemoveRepo = (e, repoId) => {
@@ -293,31 +307,130 @@ export default function Dashboard() {
                 <Sparkles size={18} className="text-[#FB923C]" />
                 <h3 className="new-analysis-title">New Analysis</h3>
               </div>
-              <p className="new-analysis-sub">Enter a GitHub repository URL to get started.</p>
+              <p className="new-analysis-sub">Submit a GitHub URL or upload a ZIP archive of your source code.</p>
 
-              <form onSubmit={handleStartAnalysis} className="new-analysis-form">
-                <div className="analysis-input-wrap">
-                  <GithubIcon className="analysis-input-icon" />
-                  <input
-                    id="repo-url-input"
-                    type="text"
-                    required
-                    placeholder="https://github.com/owner/repo"
-                    value={inputUrl}
-                    onChange={(e) => setInputUrl(e.target.value)}
-                    className="analysis-text-input"
-                  />
-                </div>
-                <button type="submit" className="analysis-submit-btn">
-                  <span>Analyse</span>
-                  <ArrowRight size={15} />
+              {/* Mode Toggle Pills */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setSubmissionMode('url'); setUploadError(''); }}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: '1px solid',
+                    background: submissionMode === 'url' ? 'rgba(251, 146, 60, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                    borderColor: submissionMode === 'url' ? '#FB923C' : 'rgba(255, 255, 255, 0.1)',
+                    color: submissionMode === 'url' ? '#FB923C' : '#9CA3AF',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  GitHub Repository
                 </button>
-              </form>
+                <button
+                  type="button"
+                  onClick={() => { setSubmissionMode('zip'); setUploadError(''); }}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: '1px solid',
+                    background: submissionMode === 'zip' ? 'rgba(251, 146, 60, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                    borderColor: submissionMode === 'zip' ? '#FB923C' : 'rgba(255, 255, 255, 0.1)',
+                    color: submissionMode === 'zip' ? '#FB923C' : '#9CA3AF',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  Upload ZIP Archive
+                </button>
+              </div>
+
+              {submissionMode === 'url' ? (
+                <form onSubmit={handleStartAnalysis} className="new-analysis-form">
+                  <div className="analysis-input-wrap">
+                    <GithubIcon className="analysis-input-icon" />
+                    <input
+                      id="repo-url-input"
+                      type="text"
+                      required
+                      placeholder="https://github.com/owner/repo"
+                      value={inputUrl}
+                      onChange={(e) => setInputUrl(e.target.value)}
+                      className="analysis-text-input"
+                    />
+                  </div>
+                  <button type="submit" className="analysis-submit-btn">
+                    <span>Analyse</span>
+                    <ArrowRight size={15} />
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleStartZipAnalysis} className="new-analysis-form" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{
+                    position: 'relative',
+                    border: '1px dashed rgba(251, 146, 60, 0.4)',
+                    borderRadius: '10px',
+                    padding: '12px',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                  }}>
+                    <input
+                      type="file"
+                      accept=".zip"
+                      required
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setZipFile(file);
+                          if (!zipProjectName) setZipProjectName(file.name.replace(/\.zip$/i, ''));
+                        }
+                      }}
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        opacity: 0,
+                        cursor: 'pointer',
+                        width: '100%',
+                        height: '100%',
+                      }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#FB923C', fontSize: '0.85rem' }}>
+                      <FileArchive size={18} />
+                      <span>{zipFile ? zipFile.name : 'Select or drop .zip codebase archive'}</span>
+                    </div>
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="Project Name (optional)"
+                    value={zipProjectName}
+                    onChange={(e) => setZipProjectName(e.target.value)}
+                    className="analysis-text-input"
+                    style={{ paddingLeft: '14px', fontSize: '0.85rem' }}
+                  />
+
+                  {uploadError && (
+                    <div style={{ color: '#f87171', fontSize: '0.8rem', textAlign: 'left' }}>
+                      {uploadError}
+                    </div>
+                  )}
+
+                  <button type="submit" className="analysis-submit-btn" disabled={isUploadingZip || !zipFile}>
+                    <span>{isUploadingZip ? 'Uploading...' : 'Upload & Analyse'}</span>
+                    <ArrowRight size={15} />
+                  </button>
+                </form>
+              )}
 
               <div className="analysis-trust-badges">
-                <span>✓ Public repositories only</span>
-                <span>✓ Fast indexing</span>
-                <span>✓ AI-powered graph</span>
+                <span>✓ Public repos & ZIPs</span>
+                <span>✓ Tree-sitter AST</span>
+                <span>✓ 2D & 3D Knowledge Graph</span>
               </div>
             </div>
           </section>

@@ -111,16 +111,41 @@ def get_repository(
     repo_id: str,
     db_path: Optional[Path] = None,
 ) -> Optional[RepositoryRecord]:
-    """Retrieve repository by unique ID."""
+    """Retrieve repository by unique ID, canonical URL, or owner/name slug."""
     with get_db(db_path) as conn:
         cursor = conn.execute(
             "SELECT * FROM repositories WHERE id = ?",
             (repo_id,),
         )
         row = cursor.fetchone()
-        if not row:
-            return None
-        return RepositoryRecord(**dict(row))
+        if row:
+            return RepositoryRecord(**dict(row))
+
+        # Check by exact canonical URL
+        cursor = conn.execute(
+            "SELECT * FROM repositories WHERE url = ? ORDER BY created_at DESC LIMIT 1",
+            (repo_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return RepositoryRecord(**dict(row))
+
+        # Check by clean URL or owner/name
+        clean_target = repo_id.rstrip("/").removesuffix(".git")
+        cursor = conn.execute(
+            """
+            SELECT * FROM repositories 
+            WHERE url LIKE ? 
+               OR (owner || '/' || name) = ? 
+               OR name = ? 
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (f"%{clean_target}%", clean_target, clean_target),
+        )
+        row = cursor.fetchone()
+        if row:
+            return RepositoryRecord(**dict(row))
+        return None
 
 
 def get_repository_by_url_and_branch(

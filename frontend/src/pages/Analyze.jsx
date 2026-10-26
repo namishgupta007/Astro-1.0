@@ -22,7 +22,7 @@ import {
   RefreshCw,
   Home
 } from 'lucide-react';
-import { submitRepositoryIndexing, getJobStreamUrl } from '../api/workspaceService.js';
+import { submitRepositoryIndexing, getJobStreamUrl, getJobStatus, getRepositoryGraph } from '../api/workspaceService.js';
 import useAuth from '../hooks/useAuth.js';
 import { saveUserSingleRepository } from '../api/userRepoService.js';
 import { RingedPlanetLogo } from './Landing.jsx';
@@ -94,7 +94,11 @@ export default function Analyze() {
   const { user } = useAuth();
 
   const repoUrl = searchParams.get('repo') || '';
+  const repoIdParam = searchParams.get('repo_id') || '';
+  const jobIdParam = searchParams.get('job_id') || '';
+  const nameParam = searchParams.get('name') || '';
   const branchParam = searchParams.get('branch') || 'main';
+  const [activeRepoId, setActiveRepoId] = useState(repoIdParam);
 
   // Parse repo owner and name from URL cleanly
   const repoMeta = useMemo(() => {
@@ -184,101 +188,166 @@ export default function Analyze() {
     });
   };
 
-  // Main Pipeline Runner (Connected to backend SSE + Client Fallback)
+  // Main Pipeline Runner (Connected to backend SSE + polling fallback)
   useEffect(() => {
     let isCancelled = false;
     let eventSource = null;
-    let fallbackTimer = null;
+    let pollInterval = null;
 
-    if (!repoUrl) {
-      setErrorMessage('No repository URL provided. Please return to the dashboard and enter a valid GitHub repository.');
+    const isDemoMode = repoUrl === 'cosmic-weather-api' || repoUrl.includes('cosmic-weather-api');
+
+    if (!repoUrl && !repoIdParam) {
+      setErrorMessage('No repository provided. Please return to the dashboard and submit a repository or ZIP archive.');
       return;
     }
 
-    appendLog('INGEST', `Initiating celestial analysis session for ${repoMeta.fullName} [ref: ${repoMeta.branch}]`);
+    appendLog('INGEST', `Initiating celestial analysis session for ${nameParam || repoMeta.fullName} [ref: ${branchParam}]`);
+
+    // Backend stage mapping to 9 Canonical Frontend UI Stages
+    const STAGE_MAP = {
+      downloading: { id: 'ingestion', progress: 15, msg: 'Streaming repository archive from GitHub...' },
+      extracting: { id: 'source_retrieval', progress: 30, msg: 'Safely extracting repository archive...' },
+      scanning: { id: 'source_retrieval', progress: 45, msg: 'Scanning repository source files & directory tree...' },
+      parsing_python: { id: 'ast_parsing', progress: 60, msg: 'Parsing Python syntax trees with Tree-sitter...' },
+      parsing_javascript: { id: 'ast_parsing', progress: 75, msg: 'Parsing JavaScript & TypeScript ASTs...' },
+      building_graph: { id: 'dependency_extraction', progress: 85, msg: 'Constructing unified topological dependency graph...' },
+      analyzing_graph: { id: 'architecture_analysis', progress: 92, msg: 'Computing PageRank and community clustering...' },
+      saving_results: { id: 'galaxy_preparation', progress: 98, msg: 'Finalizing graph artifacts and cache...' },
+      completed: { id: 'workspace_ready', progress: 100, msg: 'Your code universe is ready.' },
+    };
+
+    function applyStageUpdate(backendStage, backendStatus, backendProgress, message) {
+      const mapped = STAGE_MAP[backendStage] || { id: backendStage || 'ingestion', progress: backendProgress || 50, msg: message || 'Analyzing...' };
+      setCurrentStageId(mapped.id);
+      if (backendProgress !== undefined && backendProgress !== null) {
+        setProgress(backendProgress);
+      } else {
+        setProgress(mapped.progress);
+      }
+      setStatusMessage(message || mapped.msg);
+      appendLog('STAGE', `[Stage: ${backendStage || mapped.id}] ${message || mapped.msg} (${backendProgress ?? mapped.progress}%)`);
+
+      setStageStatuses((prev) => {
+        const next = { ...prev };
+        let found = false;
+        for (const s of PIPELINE_STAGES) {
+          if (s.id === mapped.id) {
+            next[s.id] = (backendStatus === 'completed' || backendStage === 'completed') ? 'completed' : 'running';
+            found = true;
+          } else if (!found) {
+            next[s.id] = 'completed';
+          }
+        }
+        return next;
+      });
+    }
 
     async function startPipeline() {
+      if (isDemoMode) {
+        runClientSimulation();
+        return;
+      }
+
       try {
-        // Submit indexing job to backend
-        const submitRes = await submitRepositoryIndexing(repoUrl, repoMeta.branch, user?.uid, user?.email);
-        const jobId = submitRes?.job_id;
+        let jobId = jobIdParam;
+        let repositoryId = repoIdParam;
 
-        // If backend returned a real job ID, try connecting to SSE stream
-        if (jobId && !jobId.startsWith('job-mock-')) {
-          appendLog('INFO', `Connected to backend indexing worker (Job ID: ${jobId})`);
-          const streamUrl = getJobStreamUrl(jobId);
+        if (!jobId) {
+          appendLog('INGEST', `Queueing indexing job with backend for ${repoUrl}...`);
+          const submitRes = await submitRepositoryIndexing(repoUrl, repoMeta.branch, user?.uid, user?.email);
+          jobId = submitRes?.job_id;
+          repositoryId = submitRes?.repository_id;
+        }
 
-          try {
-            eventSource = new EventSource(streamUrl);
+        if (repositoryId) {
+          setActiveRepoId(repositoryId);
+        }
 
-            eventSource.onmessage = (event) => {
-              if (isCancelled) return;
-              try {
-                const data = JSON.parse(event.data);
-                if (data.status === 'failed') {
-                  setErrorMessage(data.error || data.message || 'Pipeline indexing failed on server.');
-                  eventSource.close();
+        if (!jobId) {
+          throw new Error('Backend did not return an indexing job ID');
+        }
+
+        appendLog('INFO', `Connected to backend indexing job: ${jobId}`);
+
+        // Connect SSE stream
+        const streamUrl = getJobStreamUrl(jobId);
+        try {
+          eventSource = new EventSource(streamUrl);
+
+          eventSource.onmessage = (event) => {
+            if (isCancelled) return;
+            try {
+              const data = JSON.parse(event.data);
+              if (data.status === 'failed') {
+                setErrorMessage(data.error_message || data.error || 'Pipeline indexing failed on server.');
+                if (eventSource) eventSource.close();
+                return;
+              }
+
+              applyStageUpdate(data.stage, data.status, data.progress, data.message);
+
+              if (data.status === 'completed' || data.stage === 'completed' || (data.progress !== undefined && data.progress >= 100)) {
+                if (eventSource) eventSource.close();
+                finishPipeline(repositoryId);
+              }
+            } catch (err) {
+              // ignore parse errors
+            }
+          };
+
+          eventSource.onerror = () => {
+            if (eventSource) {
+              eventSource.close();
+              eventSource = null;
+            }
+            // Fall back to HTTP polling if SSE drops
+            if (!pollInterval && !isCancelled) {
+              appendLog('INFO', 'SSE disconnected; continuing via polling...');
+              pollInterval = setInterval(async () => {
+                if (isCancelled) {
+                  clearInterval(pollInterval);
                   return;
                 }
-
-                // Update stages from real backend event
-                if (data.stage) {
-                  setCurrentStageId(data.stage);
-                  setStageStatuses((prev) => {
-                    const next = { ...prev };
-                    let found = false;
-                    for (const s of PIPELINE_STAGES) {
-                      if (s.id === data.stage) {
-                        next[s.id] = data.status === 'completed' ? 'completed' : 'running';
-                        found = true;
-                      } else if (!found) {
-                        next[s.id] = 'completed';
-                      }
-                    }
-                    return next;
-                  });
+                try {
+                  const job = await getJobStatus(jobId);
+                  applyStageUpdate(job.stage, job.status, job.progress, job.error_message);
+                  if (job.status === 'completed') {
+                    clearInterval(pollInterval);
+                    finishPipeline(repositoryId);
+                  } else if (job.status === 'failed') {
+                    clearInterval(pollInterval);
+                    setErrorMessage(job.error_message || 'Pipeline indexing failed on server.');
+                  }
+                } catch {
+                  // ignore polling network errors
                 }
-
-                if (data.progress !== undefined) {
-                  setProgress(data.progress);
-                }
-                if (data.message) {
-                  setStatusMessage(data.message);
-                }
-                if (data.metrics) {
-                  setMetrics((prev) => ({ ...prev, ...data.metrics }));
-                }
-                if (data.logs && Array.isArray(data.logs) && data.logs.length > 0) {
-                  setLogs(data.logs);
-                }
-
-                if (data.status === 'completed' || data.stage === 'workspace_ready') {
-                  eventSource.close();
-                  finishPipeline();
-                }
-              } catch (err) {
-                // fall through
+              }, 1500);
+            }
+          };
+        } catch {
+          // If SSE creation fails, start polling immediately
+          pollInterval = setInterval(async () => {
+            if (isCancelled) {
+              clearInterval(pollInterval);
+              return;
+            }
+            try {
+              const job = await getJobStatus(jobId);
+              applyStageUpdate(job.stage, job.status, job.progress, job.error_message);
+              if (job.status === 'completed') {
+                clearInterval(pollInterval);
+                finishPipeline(repositoryId);
+              } else if (job.status === 'failed') {
+                clearInterval(pollInterval);
+                setErrorMessage(job.error_message || 'Pipeline indexing failed on server.');
               }
-            };
-
-            eventSource.onerror = () => {
-              // If SSE drops or backend is offline, gracefully transition to client pipeline
-              if (eventSource) eventSource.close();
-              if (!isCompleted) {
-                runClientSimulation();
-              }
-            };
-
-            return;
-          } catch (sseErr) {
-            runClientSimulation();
-          }
-        } else {
-          // Offline / Mock / Local mode: execute high-fidelity real-time pipeline sequence
-          runClientSimulation();
+            } catch {
+              // ignore
+            }
+          }, 1500);
         }
       } catch (err) {
-        runClientSimulation();
+        setErrorMessage(err.message || 'Failed to submit repository for indexing. Ensure backend is running.');
       }
     }
 
@@ -395,7 +464,11 @@ export default function Analyze() {
       });
     }
 
-    function finishPipeline() {
+    async function finishPipeline(repoId) {
+      const resolvedId = repoId || activeRepoId || repoIdParam;
+      if (resolvedId) {
+        setActiveRepoId(resolvedId);
+      }
       setIsCompleted(true);
       setCurrentStageId('workspace_ready');
       setProgress(100);
@@ -408,21 +481,49 @@ export default function Analyze() {
         return completedAll;
       });
 
-      // Save repository to user's isolated account in database
-      if (user && repoUrl) {
+      // Fetch genuine parsed statistics from backend
+      let realNodeLabel = 'Analyzed';
+      let realEdgeLabel = 'Analyzed';
+      let detectedTech = [];
+
+      try {
+        if (resolvedId) {
+          const liveGraph = await getRepositoryGraph(resolvedId);
+          if (liveGraph?.nodes?.length) {
+            realNodeLabel = `${liveGraph.nodes.length} nodes`;
+            realEdgeLabel = `${liveGraph.edges?.length || 0} edges`;
+
+            const rawLangs = liveGraph.nodes
+              .map((n) => n.language)
+              .filter((l) => l && l !== 'Unknown' && l !== 'Markdown');
+            detectedTech = Array.from(new Set(rawLangs));
+          }
+        }
+      } catch (err) {
+        console.warn('Could not inspect completed graph metadata:', err);
+      }
+
+      if (detectedTech.length === 0) {
+        detectedTech = ['Source Code'];
+      }
+
+      // Save repository to user's account with actual extracted facts
+      if (user && (repoUrl || resolvedId)) {
         const now = new Date();
         const dateFormatted = `${now.getDate()} ${now.toLocaleString('default', { month: 'short' })} ${now.getFullYear()}, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         saveUserSingleRepository(user, {
-          id: `repo-${Date.now()}`,
-          name: repoMeta.fullName,
-          url: repoUrl,
+          id: resolvedId || `repo-${Date.now()}`,
+          repository_id: resolvedId,
+          name: nameParam || repoMeta.fullName,
+          url: repoUrl || `upload://${repoMeta.name}`,
           type: 'Public',
-          desc: 'Interactive 3D codebase intelligence & AST dependency graph.',
-          tech: ['JavaScript', 'Python', 'Tree-sitter', 'NetworkX'],
-          nodes: '184 nodes',
-          edges: '392 edges',
+          desc: `${realNodeLabel} · ${realEdgeLabel} mapped into 2D and 3D space.`,
+          tech: detectedTech,
+          nodes: realNodeLabel,
+          edges: realEdgeLabel,
           status: 'done',
           statusText: 'Analysis complete',
+          real_metrics: true,
           lastAnalysed: dateFormatted,
           createdAtTimestamp: Date.now()
         });
@@ -434,28 +535,30 @@ export default function Analyze() {
     return () => {
       isCancelled = true;
       if (eventSource) eventSource.close();
-      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (pollInterval) clearInterval(pollInterval);
     };
-  }, [repoUrl, repoMeta.fullName, repoMeta.branch, user]);
+  }, [repoUrl, repoIdParam, jobIdParam, nameParam, repoMeta.fullName, repoMeta.branch, user]);
 
   // Automatic smooth transition timer once workspace is confirmed ready
   useEffect(() => {
     if (!isCompleted) return;
+    const targetRepoParam = activeRepoId || repoIdParam || repoUrl;
     const timer = setInterval(() => {
       setAutoCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          navigate(`/workspace?repo=${encodeURIComponent(repoUrl)}`);
+          navigate(`/workspace?repo=${encodeURIComponent(targetRepoParam)}&name=${encodeURIComponent(nameParam || repoMeta.fullName)}&url=${encodeURIComponent(repoUrl)}`);
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isCompleted, navigate, repoUrl]);
+  }, [isCompleted, navigate, activeRepoId, repoIdParam, repoUrl, nameParam, repoMeta.fullName]);
 
   const handleEnterWorkspace = () => {
-    navigate(`/workspace?repo=${encodeURIComponent(repoUrl)}`);
+    const targetRepoParam = activeRepoId || repoIdParam || repoUrl;
+    navigate(`/workspace?repo=${encodeURIComponent(targetRepoParam)}&name=${encodeURIComponent(nameParam || repoMeta.fullName)}&url=${encodeURIComponent(repoUrl)}`);
   };
 
   const handleRetry = () => {

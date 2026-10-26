@@ -66,7 +66,21 @@ export function getUserRepositoriesSync(user) {
   const userKey = getUserStorageKey(user);
   try {
     const saved = localStorage.getItem(userKey);
-    return saved ? JSON.parse(saved) : [];
+    const parsed = saved ? JSON.parse(saved) : [];
+    // Sanitize any legacy hardcoded 184-node cards so fake stats are never displayed
+    return parsed.map((r) => {
+      if (r.nodes === '184 nodes' && !r.real_metrics) {
+        return {
+          ...r,
+          nodes: 'Pending analysis',
+          edges: 'Pending analysis',
+          tech: [],
+          status: 'queued',
+          statusText: 'Click to analyze',
+        };
+      }
+      return r;
+    });
   } catch {
     return [];
   }

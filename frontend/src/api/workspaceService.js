@@ -3,7 +3,11 @@
 
 import { normalizeGraphData } from '../services/graphNormalizer.js';
 
-const BASE = ((typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || 'http://localhost:8000').replace(/\/$/, '');
+const BASE = (
+  (typeof import.meta !== "undefined" &&
+    (import.meta.env?.VITE_API_BASE_URL || import.meta.env?.VITE_API_URL)) ||
+  "http://127.0.0.1:8000"
+).replace(/\/$/, "");
 
 // Canonical reference dataset representing cosmic-weather-api matching reference snapshot
 export const MOCK_GRAPH = {
@@ -287,45 +291,60 @@ export const MOCK_GRAPH = {
  * - If backend is offline or slow, falls back seamlessly to the rich normalized MOCK_GRAPH
  * - Ensures Workspace NEVER gets stuck loading!
  */
-export async function getRepositoryGraph(repoIdOrUrl) {
-  // If backend is running, try fetching live analysis with a 800ms network timeout
-  if (repoIdOrUrl && repoIdOrUrl !== 'cosmic-weather-api') {
-    const candidateUrls = [
-      `${BASE}/api/v1/repositories/${encodeURIComponent(repoIdOrUrl)}/graph`,
-      `${BASE}/api/repositories/${encodeURIComponent(repoIdOrUrl)}/graph`,
-    ];
-    for (const url of candidateUrls) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 800);
-        const res = await fetch(url, {
-          headers: { 'Accept': 'application/json' },
-          signal: controller.signal,
+export async function getRepositoryGraph(repoIdOrUrl, options = {}) {
+  const isExplicitDemo = repoIdOrUrl === 'cosmic-weather-api' || options?.isDemo;
+  if (isExplicitDemo || !repoIdOrUrl) {
+    return normalizeGraphData({
+      ...MOCK_GRAPH,
+      is_demo: true,
+    });
+  }
+
+  const candidateUrls = [
+    `${BASE}/api/repositories/${encodeURIComponent(repoIdOrUrl)}/graph`,
+    `${BASE}/api/v1/repositories/${encodeURIComponent(repoIdOrUrl)}/graph`,
+  ];
+
+  let lastError = null;
+  for (const url of candidateUrls) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const liveData = await res.json();
+        return normalizeGraphData({
+          ...liveData,
+          is_demo: false,
         });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          const liveData = await res.json();
-          if (liveData?.nodes?.length > 0) {
-            return normalizeGraphData({
-              ...liveData,
-              is_demo: false,
-            });
-          }
-        }
-      } catch {
-        // network error or timeout -> try next candidate or proceed to fallback
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        const err = new Error(
+          errJson.detail || `Server returned ${res.status}: Failed to load graph`
+        );
+        err.status = res.status;
+        lastError = err;
+      }
+    } catch (networkErr) {
+      if (networkErr.name === 'AbortError') {
+        lastError = new Error('Graph fetch request timed out after 15 seconds');
+      } else {
+        lastError = new Error(
+          `Cannot connect to Astrograph backend at ${BASE}. Ensure server is running.`
+        );
       }
     }
   }
 
-  // Reliable instant fallback: Canonical rich dataset matching reference snapshot
-  const normalized = normalizeGraphData(MOCK_GRAPH);
-  if (repoIdOrUrl && repoIdOrUrl !== 'cosmic-weather-api') {
-    // Keep custom repository name in UI header
-    normalized.repo_name = repoIdOrUrl.split('/').pop() || repoIdOrUrl;
-    normalized.repo_url = repoIdOrUrl;
-  }
-  return normalized;
+  throw (
+    lastError ||
+    new Error(`Repository '${repoIdOrUrl}' graph could not be loaded`)
+  );
 }
 
 /**
@@ -479,4 +498,26 @@ def execute_pipeline():
     logger.info("Pipeline processing active for ${filePath}")
     return True
 `;
+}
+
+/**
+ * Upload a ZIP archive to FastAPI backend for analysis
+ */
+export async function uploadRepositoryZip(zipFile, branch = 'main', projectName = '') {
+  const formData = new FormData();
+  formData.append('file', zipFile);
+  if (branch) formData.append('branch', branch);
+  if (projectName) formData.append('project_name', projectName);
+
+  const res = await fetch(`${BASE}/api/repositories/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || `ZIP upload failed with status ${res.status}`);
+  }
+
+  return await res.json();
 }

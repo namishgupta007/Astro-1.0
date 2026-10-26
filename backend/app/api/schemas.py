@@ -288,6 +288,9 @@ class GraphResponse(BaseModel):
     """Complete code graph data."""
 
     repository_id: str
+    repo_name: Optional[str] = None
+    repo_url: Optional[str] = None
+    branch: Optional[str] = None
     schema_version: int
     summary: GraphSummaryItem
     nodes: list[GraphNodeItem]

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  AlertTriangle,
   ArrowLeft,
   Share2,
   FolderTree,
@@ -13,8 +14,10 @@ import {
   Terminal,
   ExternalLink,
   Cpu,
-  GitFork
+  GitFork,
+  User
 } from 'lucide-react';
+import useAuth from '../hooks/useAuth.js';
 import GalaxyGraph3D from '../components/Graph/GalaxyGraph3D.jsx';
 import CytoscapeGalaxyGraph from '../components/Graph2D/CytoscapeGalaxyGraph.jsx';
 import NodeInspectorPanel from '../components/Graph2D/NodeInspectorPanel.jsx';
@@ -24,8 +27,17 @@ import '../styles/workspace.css';
 
 export default function Workspace() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const repoParam = searchParams.get('repo') || 'cosmic-weather-api';
+  const nameParam = searchParams.get('name') || '';
+  const urlParam = searchParams.get('url') || '';
+  const [loadError, setLoadError] = useState(null);
+
+  // Dynamic user data for Profile navigation
+  const userName = user?.displayName || (user?.email ? user.email.split('@')[0] : 'Namish 008');
+  const userInitial = (userName || 'U')[0].toUpperCase();
+  const userPhoto = user?.photoURL;
 
   // Navigation tab states: 'graph2d' | 'graph' | 'explorer' | 'overview' | 'search' | 'ai' | 'status'
   const [activeTab, setActiveTab] = useState('graph2d');
@@ -54,16 +66,30 @@ export default function Workspace() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const data = await getRepositoryGraph(repoParam);
-      setGraphData(data);
-      if (data?.nodes?.length > 0) {
-        const telemetry = data.nodes.find((n) => n.id.includes('telemetry.py') || n.label === 'telemetry.py');
-        setSelectedNodeId(telemetry ? telemetry.id : data.nodes[0].id);
+      setLoadError(null);
+      try {
+        const isExplicitDemo = repoParam === 'cosmic-weather-api';
+        const data = await getRepositoryGraph(repoParam, { isDemo: isExplicitDemo });
+        if (nameParam && (!data.repo_name || data.repo_name === 'cosmic-weather-api' || data.repo_name.startsWith('repo_'))) {
+          data.repo_name = nameParam;
+        }
+        if (urlParam && !data.repo_url) {
+          data.repo_url = urlParam;
+        }
+        setGraphData(data);
+        if (data?.nodes?.length > 0) {
+          const firstFile = data.nodes.find((n) => n.type === 'file') || data.nodes[0];
+          setSelectedNodeId(firstFile ? firstFile.id : data.nodes[0].id);
+        }
+      } catch (err) {
+        console.error('Failed to load repository graph:', err);
+        setLoadError(err.message || 'Failed to load repository graph');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     load();
-  }, [repoParam]);
+  }, [repoParam, nameParam, urlParam]);
 
   // Selected Node data
   const selectedNode = useMemo(() => {
@@ -147,13 +173,34 @@ export default function Workspace() {
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                backgroundColor: graphData?.is_demo !== false ? '#fb923c' : '#38bdf8',
+                backgroundColor: graphData?.is_demo ? '#fb923c' : '#38bdf8',
                 display: 'inline-block',
                 marginRight: 6
               }}
             />
-            {graphData?.is_demo !== false ? 'DEMO DATA • INDEXED' : 'INDEXED READY'}
+            {graphData?.is_demo ? 'DEMO DATA • PREVIEW' : 'LIVE CODEBASE • VERIFIED'}
           </span>
+
+          {/* User Profile Navigation Button (returns to Dashboard & Profile settings) */}
+          <button
+            type="button"
+            className="workspace-profile-btn"
+            onClick={() => navigate('/dashboard')}
+            title={`View profile for ${userName}`}
+          >
+            {userPhoto ? (
+              <img
+                src={userPhoto}
+                alt={userName}
+                className="workspace-profile-avatar"
+              />
+            ) : (
+              <div className="workspace-profile-avatar-initial">
+                {userInitial}
+              </div>
+            )}
+            <span className="workspace-profile-name">{userName}</span>
+          </button>
         </div>
       </header>
 
@@ -212,6 +259,96 @@ export default function Workspace() {
 
       {/* Main Viewport */}
       <div className="workspace-viewport">
+        {loadError && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '3rem',
+            textAlign: 'center',
+            background: 'rgba(15, 23, 42, 0.85)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '16px',
+            margin: '3rem auto',
+            maxWidth: '620px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(16px)',
+            zIndex: 10,
+          }}>
+            <div style={{
+              width: '54px',
+              height: '54px',
+              borderRadius: '50%',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#f87171',
+              marginBottom: '1rem',
+            }}>
+              <AlertTriangle size={28} />
+            </div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFF', marginBottom: '0.5rem' }}>
+              Repository Graph Not Loaded
+            </h3>
+            <p style={{ fontSize: '0.9rem', color: '#94a3b8', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+              {loadError}
+            </p>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                style={{
+                  padding: '9px 20px',
+                  borderRadius: '8px',
+                  background: '#fb923c',
+                  color: '#000',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                Retry Loading
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard')}
+                style={{
+                  padding: '9px 20px',
+                  borderRadius: '8px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: '#e2e8f0',
+                  fontWeight: 500,
+                  fontSize: '0.85rem',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  cursor: 'pointer',
+                }}
+              >
+                Return to Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/workspace?repo=cosmic-weather-api')}
+                style={{
+                  padding: '9px 20px',
+                  borderRadius: '8px',
+                  background: 'rgba(14, 165, 233, 0.15)',
+                  color: '#38bdf8',
+                  fontWeight: 500,
+                  fontSize: '0.85rem',
+                  border: '1px solid rgba(14, 165, 233, 0.3)',
+                  cursor: 'pointer',
+                }}
+              >
+                Explore Demo Repository
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Tab 1: 2D Code Graph (Cytoscape.js) */}
         {activeTab === 'graph2d' && (
           <div className="workspace-view workspace-view--graph">
@@ -504,4 +641,3 @@ export default function Workspace() {
     </div>
   );
 }
-

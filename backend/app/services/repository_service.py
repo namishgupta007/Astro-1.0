@@ -278,6 +278,9 @@ def get_repository_code_graph(
 
     result = {
         "repository_id": repo_id,
+        "repo_name": repo.name,
+        "repo_url": repo.url,
+        "branch": repo.branch,
         "schema_version": graph_data.get("schema_version", 1),
         "summary": graph_data.get("summary", {}),
         "nodes": nodes,
@@ -441,3 +444,62 @@ def get_symbol_impact_analysis(
         "impacted_nodes": report["impacted_nodes"],
         "impacted_edges": report["impacted_edges"],
     }
+
+
+def submit_zip_for_indexing(
+    file_bytes: bytes,
+    filename: str = "upload.zip",
+    branch: str = "main",
+    repo_name: Optional[str] = None,
+    db_path: Optional[Path] = None,
+) -> tuple[RepositoryRecord, JobRecord]:
+    """Validate, register, and queue a user-uploaded ZIP archive for indexing."""
+    import tempfile
+    import os
+
+    if len(file_bytes) < 4 or not file_bytes.startswith(b"PK"):
+        raise ValueError("Uploaded file is not a valid ZIP archive (missing ZIP magic header)")
+
+    max_bytes = settings.max_archive_mb * 1024 * 1024
+    if len(file_bytes) > max_bytes:
+        raise ValueError(
+            f"Uploaded archive exceeds maximum permitted size of {settings.max_archive_mb} MB"
+        )
+
+    clean_name = repo_name or Path(filename).stem or "uploaded_repository"
+    clean_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", clean_name)
+    repo_id = f"repo_{uuid.uuid4().hex[:12]}"
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+
+    workspace_dir = str(settings.get_repo_source_dir(repo_id))
+    artifact_dir = str(settings.get_repo_artifact_dir(repo_id))
+    canonical_url = f"upload://{clean_name}"
+
+    temp_fd, temp_zip_str = tempfile.mkstemp(suffix=".zip", prefix="astral_upload_")
+    with os.fdopen(temp_fd, "wb") as f:
+        f.write(file_bytes)
+    temp_zip_path = Path(temp_zip_str)
+
+    repo_record = create_repository(
+        repo_id=repo_id,
+        url=canonical_url,
+        owner="user",
+        name=clean_name,
+        branch=branch,
+        workspace_dir=workspace_dir,
+        artifact_dir=artifact_dir,
+        status="queued",
+        current_job_id=job_id,
+        db_path=db_path,
+    )
+    job_record = create_job(job_id=job_id, repo_id=repo_id, db_path=db_path)
+
+    indexing_service.submit_job(
+        repo_id=repo_id,
+        job_id=job_id,
+        url=canonical_url,
+        branch=branch,
+        archive_path=temp_zip_path,
+    )
+
+    return repo_record, job_record

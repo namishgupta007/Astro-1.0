@@ -68,68 +68,76 @@ def download_github_archive(
 
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Initial target archive endpoint
-    current_url = f"https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{branch}"
+    # Initial target archive endpoint (with fallback candidate branches for resilience)
+    candidate_urls = [f"https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{branch}"]
+    if branch == "main":
+        candidate_urls.extend([
+            f"https://codeload.github.com/{owner}/{repo}/zip/refs/heads/master",
+            f"https://codeload.github.com/{owner}/{repo}/zip/HEAD",
+        ])
     max_redirects = 3
-    redirect_count = 0
 
     client_timeout = httpx.Timeout(timeout_secs, connect=10.0)
 
     try:
         with httpx.Client(timeout=client_timeout, follow_redirects=False) as client:
-            while redirect_count <= max_redirects:
-                # Validate host before every request
-                parsed_url = urlparse(current_url)
-                if parsed_url.scheme != "https":
-                    raise ValueError(f"Insecure redirect scheme: {parsed_url.scheme}")
-                if parsed_url.netloc.lower() not in ALLOWED_ARCHIVE_HOSTS:
-                    raise ValueError(
-                        f"Refusing redirect to untrusted host: {parsed_url.netloc}"
-                    )
-
-                with client.stream("GET", current_url) as response:
-                    # Handle redirects securely
-                    if response.status_code in (301, 302, 307, 308):
-                        redirect_count += 1
-                        location = response.headers.get("location")
-                        if not location:
-                            raise RuntimeError("Redirect missing Location header")
-                        # Handle relative or absolute location
-                        if location.startswith("/"):
-                            current_url = f"https://{parsed_url.netloc}{location}"
-                        else:
-                            current_url = location
-                        continue
-
-                    # Validate response status
-                    if response.status_code == 404:
+            last_err = None
+            for candidate_url in candidate_urls:
+                current_url = candidate_url
+                redirect_count = 0
+                while redirect_count <= max_redirects:
+                    parsed_url = urlparse(current_url)
+                    if parsed_url.scheme != "https":
+                        raise ValueError(f"Insecure redirect scheme: {parsed_url.scheme}")
+                    if parsed_url.netloc.lower() not in ALLOWED_ARCHIVE_HOSTS:
                         raise ValueError(
-                            f"Repository '{owner}/{repo}' or branch '{branch}' was not found on GitHub"
-                        )
-                    if response.status_code in (403, 429):
-                        raise RuntimeError(
-                            "GitHub rate limit exceeded or access to archive was forbidden"
-                        )
-                    if response.status_code != 200:
-                        raise RuntimeError(
-                            f"GitHub returned HTTP status {response.status_code} while downloading archive"
+                            f"Refusing redirect to untrusted host: {parsed_url.netloc}"
                         )
 
-                    # Stream payload into temporary destination file
-                    total_bytes = 0
-                    with open(dest_path, "wb") as f:
-                        for chunk in response.iter_bytes(chunk_size=65536):
-                            total_bytes += len(chunk)
-                            if total_bytes > max_allowed:
-                                dest_path.unlink(missing_ok=True)
-                                raise ValueError(
-                                    f"Archive exceeded maximum allowed size of {max_allowed // (1024 * 1024)} MB"
-                                )
-                            f.write(chunk)
+                    with client.stream("GET", current_url) as response:
+                        if response.status_code in (301, 302, 307, 308):
+                            redirect_count += 1
+                            location = response.headers.get("location")
+                            if not location:
+                                raise RuntimeError("Redirect missing Location header")
+                            if location.startswith("/"):
+                                current_url = f"https://{parsed_url.netloc}{location}"
+                            else:
+                                current_url = location
+                            continue
 
-                    # Successful download
-                    return
+                        if response.status_code == 404:
+                            last_err = ValueError(
+                                f"Repository '{owner}/{repo}' or branch '{branch}' was not found on GitHub"
+                            )
+                            break  # try next candidate branch
 
+                        if response.status_code in (403, 429):
+                            raise RuntimeError(
+                                "GitHub rate limit exceeded or access to archive was forbidden"
+                            )
+                        if response.status_code != 200:
+                            raise RuntimeError(
+                                f"GitHub returned HTTP status {response.status_code} while downloading archive"
+                            )
+
+                        # Stream payload into temporary destination file
+                        total_bytes = 0
+                        with open(dest_path, "wb") as f:
+                            for chunk in response.iter_bytes(chunk_size=65536):
+                                total_bytes += len(chunk)
+                                if total_bytes > max_allowed:
+                                    dest_path.unlink(missing_ok=True)
+                                    raise ValueError(
+                                        f"Archive exceeded maximum allowed size of {max_allowed // (1024 * 1024)} MB"
+                                    )
+                                f.write(chunk)
+
+                        # Successful download
+                        return
+
+            if last_err is not None:
+                raise last_err
             raise RuntimeError("Exceeded maximum allowed redirects downloading archive")
 
     except (httpx.TimeoutException, httpx.NetworkError) as err:

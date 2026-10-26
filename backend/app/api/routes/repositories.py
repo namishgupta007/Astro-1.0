@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.api.schemas import (
     DependenciesResponse,
@@ -41,6 +41,7 @@ from app.services.repository_service import (
     read_repository_source_file,
     search_repository_symbols,
     submit_repository_for_indexing,
+    submit_zip_for_indexing,
 )
 from app.storage.repository_store import get_repository, list_repositories
 
@@ -79,6 +80,70 @@ def submit_repository(req: RepositorySubmitRequest) -> RepositorySubmitResponse:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal error queueing repository indexing",
         ) from err
+
+@router.post(
+    "/upload",
+    response_model=RepositorySubmitResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Upload a repository ZIP archive for indexing",
+)
+async def upload_repository_zip(
+    request: Request,
+    branch: str = Query(default="main"),
+    name: Optional[str] = Query(default=None),
+    filename: Optional[str] = Query(default="repository.zip"),
+) -> RepositorySubmitResponse:
+    """Validate, register, and queue an uploaded repository ZIP archive for indexing."""
+    try:
+        content_type = request.headers.get("content-type", "")
+        raw_body = await request.body()
+
+        if raw_body.startswith(b"PK"):
+            file_bytes = raw_body
+        elif "multipart/form-data" in content_type:
+            from email.parser import BytesParser
+            from email.policy import default
+
+            msg = BytesParser(policy=default).parsebytes(
+                f"Content-Type: {content_type}\r\n\r\n".encode("latin1") + raw_body
+            )
+            file_bytes = None
+            for part in msg.iter_parts():
+                payload = part.get_payload(decode=True)
+                if payload and payload.startswith(b"PK"):
+                    file_bytes = payload
+                    if part.get_filename():
+                        filename = part.get_filename()
+                    break
+            if file_bytes is None:
+                raise ValueError("Could not find valid ZIP archive content in multipart upload")
+        else:
+            file_bytes = raw_body
+
+        repo_rec, job_rec = submit_zip_for_indexing(
+            file_bytes=file_bytes,
+            filename=filename or "repository.zip",
+            branch=branch,
+            repo_name=name,
+        )
+        return RepositorySubmitResponse(
+            repository_id=repo_rec.id,
+            job_id=job_rec.id,
+            status=job_rec.status,
+            message="Repository ZIP archive uploaded and indexing has been queued.",
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
+    except Exception as err:
+        logger.exception("Failed to process uploaded repository archive: %s", err)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error processing repository archive",
+        ) from err
+
 
 
 @router.get(

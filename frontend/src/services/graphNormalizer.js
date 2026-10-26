@@ -92,8 +92,8 @@ export function normalizeGraphData(rawData) {
 
   const isDemo = rawData.is_demo !== undefined ? rawData.is_demo : (rawData.repo_name === 'cosmic-weather-api');
 
-  // Filter out any directory nodes from raw nodes (since directories become visual compound clusters)
-  const nonDirRawNodes = rawData.nodes.filter((n) => n.type !== 'directory');
+  // Filter out directory and repository root nodes (directories become compound visual containers)
+  const nonDirRawNodes = rawData.nodes.filter((n) => n.type !== 'directory' && n.type !== 'repository');
 
   // If all nodes were directories (rare edge case), fallback to all
   const sourceNodes = nonDirRawNodes.length > 0 ? nonDirRawNodes : rawData.nodes;
@@ -103,10 +103,10 @@ export function normalizeGraphData(rawData) {
 
   sourceNodes.forEach((raw, idx) => {
     // Determine path and clean label
-    const rawPath = raw.path || raw.metadata?.path || raw.label || `file_${idx}`;
+    const rawPath = raw.metadata?.path || raw.path || raw.name || raw.label || `file_${idx}`;
     const cleanPath = rawPath.replace(/\\/g, '/');
     const pathParts = cleanPath.split('/');
-    const defaultLabel = pathParts[pathParts.length - 1] || raw.label || cleanPath;
+    const defaultLabel = raw.name || pathParts[pathParts.length - 1] || raw.label || cleanPath;
 
     // Determine cluster
     const clusterPath = raw.position_hint?.cluster_name || extractClusterPath(cleanPath);
@@ -217,7 +217,7 @@ export function normalizeGraphData(rawData) {
   const uniqueNodes = Array.from(new Set(Array.from(nodeMap.values())));
 
   return {
-    repo_name: rawData.repo_name || 'cosmic-weather-api',
+    repo_name: rawData.repo_name || (rawData.repository_id ? rawData.repository_id : (isDemo ? 'cosmic-weather-api' : 'analyzed-repository')),
     repo_url: rawData.repo_url || '',
     branch: rawData.branch || 'main',
     commit_sha: rawData.commit_sha || null,

@@ -93,9 +93,18 @@ export default function Repositories() {
   }, [user?.uid, user?.email]);
 
   const handleOpenWorkspace = (repo) => {
-    const target = repo?.url || (typeof repo === "string" ? repo : "");
-    if (!target) return;
-    navigate(`/workspace?repo=${encodeURIComponent(target)}`);
+    if (!repo) return;
+    const repoObj = typeof repo === 'string' ? { url: repo, name: repo } : repo;
+    const isAnalyzed = repoObj.status === 'done' && (repoObj.repository_id || (repoObj.id && repoObj.id.startsWith('repo_')));
+
+    if (isAnalyzed) {
+      const targetId = repoObj.repository_id || repoObj.id;
+      navigate(`/workspace?repo=${encodeURIComponent(targetId)}&name=${encodeURIComponent(repoObj.name || '')}&url=${encodeURIComponent(repoObj.url || '')}`);
+    } else {
+      // Re-trigger or complete analysis for pending or unindexed repositories
+      const targetUrl = repoObj.url || repoObj.id;
+      navigate(`/analyze?repo=${encodeURIComponent(targetUrl)}&name=${encodeURIComponent(repoObj.name || '')}`);
+    }
   };
 
   const handleRemoveRepo = (e, repoId) => {
@@ -385,12 +394,16 @@ export default function Repositories() {
 
                     <div className="repo-metrics-row">
                       <span>
-                        {repo.nodes || "Nodes mapped"} ·{" "}
-                        {repo.edges || "Edges mapped"}
+                        {repo.nodes && repo.edges ? `${repo.nodes} · ${repo.edges}` : (repo.nodes || "Pending analysis")}
                       </span>
-                      <div className="repo-status-indicator repo-status-indicator--done">
+                      <div
+                        className="repo-status-indicator"
+                        style={{
+                          color: repo.status === 'done' ? '#34d399' : (repo.status === 'failed' ? '#f87171' : '#fb923c')
+                        }}
+                      >
                         <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                        <span>{repo.statusText || "Analysis complete"}</span>
+                        <span>{repo.statusText || (repo.status === 'done' ? 'Analysis complete' : 'Ready to analyze')}</span>
                       </div>
                     </div>
 

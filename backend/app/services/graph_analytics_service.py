@@ -130,7 +130,12 @@ def compute_pagerank(
     except Exception as exc:
         logger.warning("PageRank calculation encountered error (%s); falling back to degree centrality", exc)
         try:
-            raw_pr = nx.degree_centrality(G)
+            deg = nx.degree_centrality(G)
+            if not any(deg.values()):
+                val = 1.0 / len(G)
+                raw_pr = {n: val for n in G.nodes()}
+            else:
+                raw_pr = deg
         except Exception:
             val = 1.0 / len(G)
             raw_pr = {n: val for n in G.nodes()}
