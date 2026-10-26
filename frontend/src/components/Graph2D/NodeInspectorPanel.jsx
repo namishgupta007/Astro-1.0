@@ -14,7 +14,6 @@ import {
   ArrowUpRight,
   Bot
 } from 'lucide-react';
-import { getSourceFileContent } from '../../api/workspaceService.js';
 
 // SVG Python icon
 function PythonIcon({ style = { width: 14, height: 14 } }) {
@@ -41,10 +40,8 @@ export default function NodeInspectorPanel({
   onSelectNode,
   onClose,
 }) {
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'code' | 'dependencies'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'dependencies'
   const [copied, setCopied] = useState(false);
-  const [codeContent, setCodeContent] = useState('');
-  const [loadingCode, setLoadingCode] = useState(false);
 
   // Compute incoming and outgoing dependencies for selected file
   const { incomingDeps, outgoingDeps } = useMemo(() => {
@@ -87,16 +84,6 @@ export default function NodeInspectorPanel({
     return { incomingDeps: incoming, outgoingDeps: outgoing };
   }, [selectedNode, allNodes, allEdges]);
 
-  // Load code preview
-  useEffect(() => {
-    if (activeTab === 'code' && selectedNode?.path) {
-      setLoadingCode(true);
-      getSourceFileContent(repoName, selectedNode.path).then((code) => {
-        setCodeContent(code);
-        setLoadingCode(false);
-      });
-    }
-  }, [activeTab, selectedNode, repoName]);
 
   const handleCopyPath = () => {
     if (!selectedNode?.path) return;
@@ -228,7 +215,7 @@ export default function NodeInspectorPanel({
         </div>
       </div>
 
-      {/* ─── TABS: OVERVIEW | CODE | DEPENDENCIES ────────────────────────── */}
+      {/* ─── TABS: OVERVIEW | DEPENDENCIES ───────────────────────────────── */}
       <div className="inspector-tab-row">
         <button
           type="button"
@@ -236,13 +223,6 @@ export default function NodeInspectorPanel({
           onClick={() => setActiveTab('overview')}
         >
           Overview
-        </button>
-        <button
-          type="button"
-          className={`inspector-tab-btn ${activeTab === 'code' ? 'inspector-tab-btn--active' : ''}`}
-          onClick={() => setActiveTab('code')}
-        >
-          Code
         </button>
         <button
           type="button"
@@ -367,37 +347,7 @@ export default function NodeInspectorPanel({
         </>
       )}
 
-      {/* ─── TAB 2: CODE ─────────────────────────────────────────────────── */}
-      {activeTab === 'code' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-          <div style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: '#94a3b8' }}>
-            {selectedNode.path}
-          </div>
-          {loadingCode ? (
-            <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: '#06b6d4' }}>
-              Loading source...
-            </div>
-          ) : (
-            <pre style={{
-              margin: 0,
-              padding: '0.85rem',
-              borderRadius: '10px',
-              background: '#030610',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              fontSize: '0.74rem',
-              fontFamily: 'var(--font-mono)',
-              color: '#67e8f9',
-              overflowX: 'auto',
-              maxHeight: '400px',
-              lineHeight: 1.5
-            }}>
-              <code>{codeContent}</code>
-            </pre>
-          )}
-        </div>
-      )}
-
-      {/* ─── TAB 3: DEPENDENCIES ─────────────────────────────────────────── */}
+      {/* ─── TAB 2: DEPENDENCIES ─────────────────────────────────────────── */}
       {activeTab === 'dependencies' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           <div>
