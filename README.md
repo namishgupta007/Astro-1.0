@@ -76,6 +76,25 @@ Once the server is running, explore and test the endpoints interactively via Swa
 
 ---
 
+## Starting the Frontend & Google Authentication
+
+Navigate to the `frontend/` directory:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend launches at [http://localhost:5173](http://localhost:5173).
+
+### Google Authentication
+- **Works Out-of-the-Box**: Firebase client credentials are pre-configured so anyone cloning from GitHub can log in immediately via **Continue with Google**.
+- **Domain Authorization**: Open the app via `http://localhost:5173` (localhost is an authorized domain by default).
+- **Guest Exploration**: If preferred, click **Explore as Guest** on the landing page to access features without signing in.
+
+---
+
 ## API Endpoints & Usage Guide
 
 ### 1. Health Check

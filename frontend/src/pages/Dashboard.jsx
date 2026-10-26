@@ -64,7 +64,7 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
 
   // Dynamic user data from Firebase auth (no hardcoded names)
-  const userName = user?.displayName || (user?.email ? user.email.split('@')[0] : 'Namish 008');
+  const userName = user?.displayName || (user?.email ? user.email.split('@')[0] : 'Explorer');
   const userInitial = (userName || 'U')[0].toUpperCase();
   const userPhoto = user?.photoURL;
 
@@ -225,6 +225,20 @@ export default function Dashboard() {
               <div className="dash-avatar-circle">{userInitial}</div>
             )}
             <span className="text-[#FFF7ED] font-medium">{userName}</span>
+            {user?.isGuest && (
+              <span style={{
+                fontSize: '0.68rem',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                background: 'rgba(251, 146, 60, 0.2)',
+                color: '#FB923C',
+                border: '1px solid rgba(251, 146, 60, 0.4)',
+                fontFamily: 'var(--font-mono, monospace)',
+                marginLeft: '4px'
+              }}>
+                Guest
+              </span>
+            )}
           </div>
 
           {/* Dedicated Logout Button with spacious margin */}

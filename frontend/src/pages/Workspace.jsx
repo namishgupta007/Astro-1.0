@@ -35,7 +35,7 @@ export default function Workspace() {
   const [loadError, setLoadError] = useState(null);
 
   // Dynamic user data for Profile navigation
-  const userName = user?.displayName || (user?.email ? user.email.split('@')[0] : 'Namish 008');
+  const userName = user?.displayName || (user?.email ? user.email.split('@')[0] : 'Explorer');
   const userInitial = (userName || 'U')[0].toUpperCase();
   const userPhoto = user?.photoURL;
 
@@ -200,6 +200,20 @@ export default function Workspace() {
               </div>
             )}
             <span className="workspace-profile-name">{userName}</span>
+            {user?.isGuest && (
+              <span style={{
+                fontSize: '0.65rem',
+                padding: '1px 6px',
+                borderRadius: '4px',
+                background: 'rgba(251, 146, 60, 0.2)',
+                color: '#FB923C',
+                border: '1px solid rgba(251, 146, 60, 0.4)',
+                fontFamily: 'var(--font-mono, monospace)',
+                marginLeft: '4px'
+              }}>
+                Guest
+              </span>
+            )}
           </button>
         </div>
       </header>

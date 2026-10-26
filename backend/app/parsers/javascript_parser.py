@@ -79,6 +79,10 @@ class JavaScriptTreeSitterVisitor:
         self._scope_stack: list[tuple[str, str]] = []
         # Function stack: list of Symbol instances representing current active function/method
         self._func_stack: list[Symbol] = []
+        # Precompute line start byte offsets for safe, segfault-free line/column calculations
+        self._line_starts: list[int] = [0] + [
+            i + 1 for i, b in enumerate(self.source_bytes) if b == 10
+        ]
 
     def _text(self, node: Optional[ts.Node]) -> str:
         if node is None:
@@ -88,13 +92,19 @@ class JavaScriptTreeSitterVisitor:
         )
 
     def _lineno(self, node: ts.Node) -> int:
-        return node.start_point.row + 1
+        import bisect
+        idx = bisect.bisect_right(self._line_starts, node.start_byte)
+        return idx
 
     def _end_lineno(self, node: ts.Node) -> int:
-        return node.end_point.row + 1
+        import bisect
+        idx = bisect.bisect_right(self._line_starts, node.end_byte)
+        return idx
 
     def _col_offset(self, node: ts.Node) -> int:
-        return node.start_point.column
+        import bisect
+        idx = bisect.bisect_right(self._line_starts, node.start_byte)
+        return node.start_byte - self._line_starts[idx - 1]
 
     def _current_scope_name(self) -> Optional[str]:
         if not self._scope_stack:

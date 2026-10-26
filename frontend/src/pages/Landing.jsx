@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Lock,
@@ -14,6 +14,7 @@ import {
   ArrowRight,
   Shield,
   Layers,
+  Compass,
 } from "lucide-react";
 import useAuth, { friendlyError } from "../hooks/useAuth.js";
 import HeroGraph from "../components/Graph/HeroGraph.jsx";
@@ -68,7 +69,7 @@ function GoogleIcon() {
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { user, signIn, signUp, google } = useAuth();
+  const { user, signIn, signUp, google, guestSignIn } = useAuth();
 
   const [authMode, setAuthMode] = useState("login"); // 'login' | 'signup'
   const [email, setEmail] = useState("");
@@ -77,6 +78,12 @@ export default function Landing() {
   const [rememberMe, setRememberMe] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState("");
+
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleAuthSubmit = async (e) => {
     e?.preventDefault();
@@ -106,11 +113,46 @@ export default function Landing() {
   };
 
   const handleOAuth = async () => {
+    setAuthError("");
+    setIsSubmitting(true);
     try {
-      if (google) await google();
-      navigate("/dashboard");
-    } catch {
-      navigate("/dashboard");
+      if (google) {
+        const u = await google();
+        if (u) {
+          navigate("/dashboard");
+        }
+      } else {
+        throw new Error("Authentication service is unavailable.");
+      }
+    } catch (err) {
+      console.warn("Google sign-in error:", err);
+      if (
+        err?.code !== "auth/popup-closed-by-user" &&
+        err?.code !== "auth/cancelled-popup-request"
+      ) {
+        const msg = friendlyError ? friendlyError(err) : (err?.message || "Google sign-in failed.");
+        setAuthError(msg);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    setAuthError("");
+    setIsSubmitting(true);
+    try {
+      if (guestSignIn) {
+        await guestSignIn();
+        navigate("/dashboard");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (err) {
+      const msg = err?.message || "Could not start guest session.";
+      setAuthError(msg);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -501,10 +543,69 @@ export default function Landing() {
               <button
                 type="button"
                 onClick={handleOAuth}
+                disabled={isSubmitting}
                 className="auth-github-btn"
               >
                 <GoogleIcon />
-                <span>Continue with Google</span>
+                <span>{isSubmitting ? "Connecting..." : "Continue with Google"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGuestLogin}
+                disabled={isSubmitting}
+                className="auth-guest-btn"
+                style={{
+                  marginTop: '0.75rem',
+                  width: '100%',
+                  background: 'linear-gradient(135deg, rgba(251, 146, 60, 0.12), rgba(234, 88, 12, 0.05))',
+                  border: '1px solid rgba(251, 146, 60, 0.35)',
+                  color: '#FED7AA',
+                  borderRadius: '0.6rem',
+                  padding: '0.7rem 1rem',
+                  fontSize: '0.84rem',
+                  fontFamily: 'var(--font-sans, sans-serif)',
+                  fontWeight: 600,
+                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.6rem',
+                  transition: 'all 0.25s ease',
+                  boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
+                  opacity: isSubmitting ? 0.6 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSubmitting) {
+                    e.currentTarget.style.borderColor = 'rgba(251, 146, 60, 0.7)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(251, 146, 60, 0.22), rgba(234, 88, 12, 0.12))';
+                    e.currentTarget.style.color = '#FFFFFF';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSubmitting) {
+                    e.currentTarget.style.borderColor = 'rgba(251, 146, 60, 0.35)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(251, 146, 60, 0.12), rgba(234, 88, 12, 0.05))';
+                    e.currentTarget.style.color = '#FED7AA';
+                    e.currentTarget.style.transform = 'none';
+                  }
+                }}
+              >
+                <Compass size={16} className="text-[#FB923C]" />
+                <span>Continue as Guest</span>
+                <span style={{
+                  fontSize: '0.65rem',
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  backgroundColor: 'rgba(251, 146, 60, 0.2)',
+                  color: '#FB923C',
+                  border: '1px solid rgba(251, 146, 60, 0.4)',
+                  fontFamily: 'var(--font-mono, monospace)',
+                  marginLeft: 'auto'
+                }}>
+                  Instant Demo
+                </span>
               </button>
 
               <div className="auth-security-footer">

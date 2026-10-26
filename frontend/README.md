@@ -1,32 +1,48 @@
-# React + TypeScript + Vite
+# AstroGraph Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+AstroGraph interactive 3D and 2D celestial codebase intelligence interface built with React, Vite, Three.js, Cytoscape.js, and Firebase Authentication.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Quick Start (For Anyone Cloning From GitHub)
 
-## React Compiler
+1. **Install Dependencies**:
+   ```bash
+   cd frontend
+   npm install
+   ```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. **Start Dev Server**:
+   ```bash
+   npm run dev
+   ```
+   Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-## Expanding the Oxlint configuration
+---
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Authentication & Google Sign-In
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+### Out-of-the-Box Google Login
+The project includes default Firebase client configuration (`src/firebase.js`), so anyone who clones the repository from GitHub can immediately click **"Continue with Google"** and sign in without any initial setup or `.env` files required.
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+### Important Note on Localhost vs 127.0.0.1
+Firebase Authentication security requires requests to originate from an **Authorized Domain**.
+- `localhost` is authorized by default.
+- If you open the site via `http://localhost:5173`, Google Sign-In works immediately.
+- The app automatically normalizes requests from `127.0.0.1` to `localhost` to prevent `auth/unauthorized-domain` errors.
+- If deploying to a custom domain (e.g., Vercel, Netlify, Render), add your domain in **Firebase Console → Authentication → Settings → Authorized domains**.
+
+### Guest / Demo Mode
+You can also click **"Explore as Guest"** on the landing page to access the full dashboard and graph visualizers instantly without signing in.
+
+---
+
+## Custom Environment Variables (Optional)
+
+If you wish to connect your own Firebase project or custom backend:
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+2. Update the `VITE_FIREBASE_*` credentials with your own Firebase Web App configuration from the Firebase Console.
+3. Restart the dev server (`npm run dev`).
