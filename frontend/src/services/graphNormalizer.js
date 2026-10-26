@@ -99,12 +99,13 @@ export function normalizeGraphData(rawData) {
   const sourceNodes = nonDirRawNodes.length > 0 ? nonDirRawNodes : rawData.nodes;
 
   const nodeMap = new Map();
+  const fileNodesMap = new Map();
   const clusterFileMap = new Map();
 
   sourceNodes.forEach((raw, idx) => {
     // Determine path and clean label
-    const rawPath = raw.metadata?.path || raw.path || raw.name || raw.label || `file_${idx}`;
-    const cleanPath = rawPath.replace(/\\/g, '/');
+    const rawPath = raw.metadata?.path || raw.metadata?.file_path || raw.path || raw.name || raw.label || `file_${idx}`;
+    const cleanPath = String(rawPath).replace(/\\/g, '/');
     const pathParts = cleanPath.split('/');
     const defaultLabel = raw.name || pathParts[pathParts.length - 1] || raw.label || cleanPath;
 
@@ -113,6 +114,7 @@ export function normalizeGraphData(rawData) {
 
     // Canonical node ID
     const canonicalId = raw.id || `file::${cleanPath}`;
+    const nodeType = raw.type || 'file';
 
     // Extract metrics safely
     const metrics = {
@@ -122,13 +124,20 @@ export function normalizeGraphData(rawData) {
       cluster_id: raw.position_hint?.cluster_id ?? raw.metadata?.cluster_id ?? 0,
     };
 
+    // Determine enclosing file path & ID for symbols
+    const filePath = raw.metadata?.file_path || (nodeType === 'file' ? cleanPath : cleanPath.split('::')[0]);
+    const fileId = `file::${filePath}`;
+
     const node = {
       id: canonicalId,
       raw_id: raw.id,
       label: raw.label || defaultLabel,
+      name: raw.name || defaultLabel,
       path: cleanPath,
+      file_path: filePath,
+      file_id: fileId,
       cluster: clusterPath,
-      type: raw.type || 'file',
+      type: nodeType,
       language: raw.language || raw.metadata?.language || 'python',
       metrics,
       ai_summary: raw.ai_summary || raw.metadata?.ai_summary || null,
@@ -140,6 +149,11 @@ export function normalizeGraphData(rawData) {
     if (raw.id && raw.id !== canonicalId) {
       nodeMap.set(raw.id, node);
     }
+    if (nodeType === 'file') {
+      fileNodesMap.set(canonicalId, node);
+      fileNodesMap.set(cleanPath, node);
+      fileNodesMap.set(fileId, node);
+    }
 
     if (!clusterFileMap.has(clusterPath)) {
       clusterFileMap.set(clusterPath, []);
@@ -150,24 +164,30 @@ export function normalizeGraphData(rawData) {
   // Build cluster containers with palettes and dynamic file counts
   const clusterList = [];
   let clusterIdx = 0;
-  for (const [cPath, files] of clusterFileMap.entries()) {
+  for (const [cPath, items] of clusterFileMap.entries()) {
     const palette = getClusterPalette(cPath, clusterIdx);
+    const filesInCluster = items.filter((f) => f.type === 'file');
+    const fileCount = filesInCluster.length > 0 ? filesInCluster.length : items.length;
+
     clusterList.push({
       id: `cluster::${cPath}`,
       path: cPath,
       name: cPath === 'root' ? 'root/' : `${cPath}/`,
-      fileCount: files.length,
+      fileCount,
+      totalCount: items.length,
       color: palette.border,
       bg: palette.bg,
       textColor: palette.text,
-      nodeIds: files.map((f) => f.id),
+      nodeIds: items.map((f) => f.id),
+      fileNodeIds: filesInCluster.map((f) => f.id),
       cluster_id: clusterIdx++,
     });
   }
 
-  // Canonicalize edges (file-to-file only!)
+  // Canonicalize edges (file-to-file only & direct relations)
   const normalizedEdges = [];
   const rawEdges = Array.isArray(rawData.edges) ? rawData.edges : [];
+  const edgeSeenSet = new Set();
 
   rawEdges.forEach((rawEdge, edgeIdx) => {
     // Resolve source and target nodes
@@ -186,9 +206,9 @@ export function normalizeGraphData(rawData) {
       );
     }
 
-    // Discard edges if endpoints are invalid or if an endpoint is a directory container
+    // Discard edges if endpoints are invalid
     if (!sourceNode || !targetNode) return;
-    if (sourceNode.id === targetNode.id) return; // ignore self-loops unless desired
+    if (sourceNode.id === targetNode.id) return; // ignore direct self-loops
 
     const relation = (rawEdge.relation || rawEdge.type || 'imports').toLowerCase();
     // Normalize relation types: 'imports', 'calls', 'defines', 'contains'
@@ -201,12 +221,26 @@ export function normalizeGraphData(rawData) {
 
     const isCrossCluster = sourceNode.cluster !== targetNode.cluster;
 
+    // Resolve enclosing file IDs for file-level rollups
+    const sourceFileNode = fileNodesMap.get(sourceNode.id) || fileNodesMap.get(sourceNode.file_id) || fileNodesMap.get(sourceNode.file_path) || sourceNode;
+    const targetFileNode = fileNodesMap.get(targetNode.id) || fileNodesMap.get(targetNode.file_id) || fileNodesMap.get(targetNode.file_path) || targetNode;
+
+    const sourceFileId = sourceFileNode ? sourceFileNode.id : sourceNode.id;
+    const targetFileId = targetFileNode ? targetFileNode.id : targetNode.id;
+
+    // Ensure edge uniqueness
+    const edgeKey = `${sourceNode.id}->${targetNode.id}::${normRelation}`;
+    if (edgeSeenSet.has(edgeKey)) return;
+    edgeSeenSet.add(edgeKey);
+
     normalizedEdges.push({
       id: rawEdge.id || `edge-${edgeIdx}-${sourceNode.id}-${targetNode.id}`,
       source: sourceNode.id,
       target: targetNode.id,
       sourcePath: sourceNode.path,
       targetPath: targetNode.path,
+      sourceFileId,
+      targetFileId,
       relation: normRelation,
       weight: rawEdge.weight ?? 1.0,
       is_cross_cluster: isCrossCluster,
@@ -227,7 +261,8 @@ export function normalizeGraphData(rawData) {
     edges: normalizedEdges,
     clusters: clusterList,
     summary: {
-      totalFiles: uniqueNodes.length,
+      totalFiles: uniqueNodes.filter((n) => n.type === 'file').length || uniqueNodes.length,
+      totalNodes: uniqueNodes.length,
       totalDependencies: normalizedEdges.length,
       totalClusters: clusterList.length,
     },
